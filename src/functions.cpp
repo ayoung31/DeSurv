@@ -494,15 +494,15 @@ List optimize_loss_cpp(const arma::mat& X_in,
      pwlossit[it] = penaltyW;
      phlossit[it] = penaltyH;
 
-     if (verbose) {
-       Rprintf("iter: %d  eps: %.8e  loss: %.8e  nmf: %.8e  surv: %.8e\n",
-               it, eps, loss, nmfloss, survloss);
-     }
-     ++it;
+      if (verbose) {
+        Rprintf("iter: %d  eps: %.8e  loss: %.8e  nmf: %.8e  surv: %.8e\n",
+                it, eps, loss, nmfloss, survloss);
+      }
+      ++it;
 
-     if (it == maxit) {
-       warning("coxNMF hit max iterations without convergence");
-     }
+      if (it == maxit) {
+        warning("DeSurv fit hit max iterations without convergence");
+      }
    }
 
    // refit beta on final W
@@ -531,4 +531,3 @@ List optimize_loss_cpp(const arma::mat& X_in,
      Named("nan_flag")    = flag_nan
    );
 }
-
