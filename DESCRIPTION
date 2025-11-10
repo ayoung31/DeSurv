@@ -18,7 +18,9 @@ Imports:
     ncvreg,
     parallel,
     foreach,
-    doParallel
+    doParallel,
+    cvwrapr,
+    caret
 LinkingTo:
     Rcpp,
     RcppArmadillo,
