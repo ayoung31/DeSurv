@@ -4,9 +4,22 @@
 \name{DeSurv-package}
 \alias{DeSurv}
 \alias{DeSurv-package}
-\title{DeSurv: Implements survival-driven deconvolution (NMF+cox model)}
+\title{DeSurv: Survival-Driven Nonnegative Matrix Factorization}
 \description{
-What the package does (one paragraph).
+DeSurv couples nonnegative matrix factorisation with a Cox proportional
+hazards model so that survival information steers the latent factors that
+summarise high-dimensional molecular data. The package exposes
+multi-start optimisers, alpha warm-start paths, hyperparameter
+cross-validation helpers, prediction utilities, and validation helpers for
+expression matrices typically encountered in RNA-seq studies.
+}
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://github.com/ayoung31/DeSurv}
+  \item Report bugs at \url{https://github.com/ayoung31/DeSurv/issues}
+}
+
 }
 \author{
 \strong{Maintainer}: Amber Young \email{ayoung31@ad.unc.edu}

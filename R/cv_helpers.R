@@ -301,26 +301,50 @@
   cv_results <- do.call(rbind, job_results)
 
   ## --- summaries ---
-  summary_init <- stats::aggregate(
-    cindex ~ k + lambda + nu + lambdaW + lambdaH + init_id + alpha,
+  summary_fold <- stats::aggregate(
+    cindex ~ fold + k + lambda + nu + lambdaW + lambdaH + alpha,
     data = cv_results,
     FUN  = function(x) mean(x, na.rm = TRUE)
   )
-  names(summary_init)[names(summary_init) == "cindex"] <- "mean_cindex_init"
+  names(summary_fold)[names(summary_fold) == "cindex"] <- "mean_cindex_fold"
 
-  summary <- stats::aggregate(
-    mean_cindex_init ~ k + lambda + nu + lambdaW + lambdaH + alpha,
-    data = summary_init,
+  ## helper: standard error across folds
+  se_fun <- function(x) {
+    x <- x[is.finite(x)]
+    if (length(x) <= 1L) return(NA_real_)
+    stats::sd(x) / sqrt(length(x))
+  }
+
+  ## Step 2a: mean across folds (of the fold-level init-averaged C-index)
+  summary_mean <- stats::aggregate(
+    mean_cindex_fold ~ k + lambda + nu + lambdaW + lambdaH + alpha,
+    data = summary_fold,
     FUN  = function(x) mean(x, na.rm = TRUE)
   )
-  names(summary)[names(summary) == "mean_cindex_init"] <- "mean_cindex"
+  names(summary_mean)[names(summary_mean) == "mean_cindex_fold"] <- "mean_cindex"
+
+  ## Step 2b: SE across folds (of the fold-level init-averaged C-index)
+  summary_se <- stats::aggregate(
+    mean_cindex_fold ~ k + lambda + nu + lambdaW + lambdaH + alpha,
+    data = summary_fold,
+    FUN  = se_fun
+  )
+  names(summary_se)[names(summary_se) == "mean_cindex_fold"] <- "se_cindex"
+
+  ## Combine mean and SE
+  summary <- merge(
+    summary_mean,
+    summary_se,
+    by   = c("k", "lambda", "nu", "lambdaW", "lambdaH", "alpha"),
+    sort = FALSE
+  )
 
   list(
-    cv_results    = cv_results,   # fold-level, per init+alpha+hyper
-    summary_init  = summary_init, # mean over folds, per init+alpha+hyper
-    summary       = summary,      # mean over folds+inits, per alpha+hyper
-    alpha_grid    = alpha_grid,
-    hyper_grid    = hyper_grid,
-    folds         = folds
+    cv_results   = cv_results,   # raw: per fold, per init, per alpha, per hyper
+    summary_fold = summary_fold, # step 1: mean across inits, per fold+alpha+hyper
+    summary      = summary,      # step 2: mean across folds + SE, per alpha+hyper
+    alpha_grid   = alpha_grid,
+    hyper_grid   = hyper_grid,
+    folds        = folds
   )
 }

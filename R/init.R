@@ -35,12 +35,12 @@ init <- function(
     beta0_i <- rep(0, k)
 
     fit_short <- tryCatch(
-      optimize_loss_cpp(
+      .run_optimize_loss(
         X, y, delta,
         W0_i, H0_i, beta0_i,
         alpha, lambda, nu,
         lambdaW, lambdaH,
-        tol_init, imaxit, verbose_inner, TRUE
+        tol_init, imaxit, verbose_inner
       ),
       error = function(e) {
         if (verbose_inner) {

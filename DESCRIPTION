@@ -1,17 +1,22 @@
 Package: DeSurv
-Title: Implements survival-driven deconvolution (NMF+cox model)
+Title: Survival-Driven Nonnegative Matrix Factorization
 Version: 0.0.0.9000
 Authors@R: 
     person("Amber", "Young", , "ayoung31@ad.unc.edu", role = c("aut","cre"))
-Description: What the package does (one paragraph).
-License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
-    license
+Description: Fit a supervised nonnegative matrix factorization that
+    couples latent factors learned from high-dimensional expression data with
+    a Cox proportional hazards model. The package provides utilities for
+    data validation, warm-started optimisation across supervision weights,
+    hyper-parameter grid search with cross-validation, prediction helpers,
+    and lightweight gene filtering tailored to transcriptomic assays.
+License: MIT + file LICENSE
+URL: https://github.com/ayoung31/DeSurv
+BugReports: https://github.com/ayoung31/DeSurv/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Imports: 
     glmnet,
-    NMF,
     Rcpp,
     RcppArmadillo,
     survival,
@@ -19,12 +24,14 @@ Imports:
     parallel,
     foreach,
     doParallel,
-    cvwrapr,
-    caret
+    cvwrapr
 LinkingTo:
     Rcpp,
     RcppArmadillo,
     RcppEigen
 Suggests: 
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown
 Config/testthat/edition: 3
+VignetteBuilder: knitr

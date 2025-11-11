@@ -1,0 +1,152 @@
+---
+title: "Getting Started with DeSurv"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with DeSurv}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6,
+  fig.height = 4,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+## Overview
+
+DeSurv couples nonnegative matrix factorisation (NMF) with a Cox
+proportional hazards layer so that latent factors learned from
+high-dimensional data, such as RNA-seq, are guided by survival outcomes.
+This vignette walks through a typical workflow:
+
+1. Prepare a `desurv_data` object.
+2. Fit a model with automatic multi-start initialisation.
+3. Explore supervision weights with `desurv_alpha_warmstart()`.
+4. Run a small hyper-parameter search with `desurv_cv()`.
+5. Generate predictions on new samples.
+
+The simulated example keeps dimensions small so it knits quickly, but the
+same code applies to larger cohorts.
+
+```{r libraries}
+library(DeSurv)
+set.seed(2024)
+```
+
+## Simulate expression and survival data
+
+```{r data-sim}
+p <- 50   # genes
+n <- 80   # samples
+k <- 3    # latent programs
+
+X <- matrix(rexp(p * n), nrow = p, ncol = n)
+rownames(X) <- paste0("gene", seq_len(p))
+y <- rexp(n) + 0.1         # survival times must be > 0
+d <- rbinom(n, 1, 0.65)    # event indicators
+d[seq_len(4)] <- 1         # ensure a few events
+
+dd <- desurv_data(X, y, d, k = k)
+dd
+```
+
+## Fit a single model
+
+`desurv_fit()` validates inputs, tries several short initialisations, and
+then runs a longer optimisation from the best warm start.
+
+```{r desurv-fit}
+fit <- desurv_fit(
+  dd,
+  alpha   = 0.5,
+  lambda  = 0.8,
+  nu      = 0.5,
+  lambdaW = 0.1,
+  lambdaH = 0.1,
+  ninit   = 4,
+  imaxit  = 20,
+  maxit   = 300,
+  verbose = FALSE
+)
+
+fit$cindex
+```
+
+The fit stores the learned NMF factors `W` and `H`, the Cox coefficients
+`beta`, and the concordance index on the training set.
+
+## Warm-start along `alpha`
+
+To understand how much supervision to impose, you can traverse an
+`alpha_grid` while warm-starting from the previous solution. Each path
+starts from a random initialisation.
+
+```{r warmstart}
+warm <- desurv_alpha_warmstart(
+  dd,
+  alpha_grid = seq(0.1, 0.9, by = 0.2),
+  lambda     = 0.8,
+  nu         = 0.5,
+  lambdaW    = 0.1,
+  lambdaH    = 0.1,
+  n_starts   = 2,
+  maxit      = 200,
+  verbose    = FALSE
+)
+
+warm$results
+```
+
+The `results` data frame summarises the concordance index for each
+initialisation/alpha combination, and the `fits` list stores the actual
+`desurv_fit` objects.
+
+## Cross-validation over a tiny grid
+
+`desurv_cv()` wraps a grid search, stratified fold generation, and a final
+refit on the full data. For illustration we keep the grid compact.
+
+```{r cv}
+cv_fit <- desurv_cv(
+  dd,
+  k_grid       = k,
+  alpha_grid   = c(0.3, 0.5, 0.7),
+  lambda_grid  = c(0.5, 1),
+  nu_grid      = c(0.4, 0.6),
+  lambdaW_grid = 0.1,
+  lambdaH_grid = 0.1,
+  n_starts     = 1,
+  nfolds       = 3,
+  tol          = 5e-5,
+  maxit        = 250,
+  verbose      = FALSE
+)
+
+cv_fit$best
+```
+
+The `best` list contains the selected hyper-parameters and the mean/SE of
+the fold-level concordance indices. The `fit` element is a `desurv_fit`
+object refit on the entire cohort.
+
+## Predictions on new samples
+
+Predictions operate on matrices (or `desurv_data` objects) whose rows match
+the training gene order.
+
+```{r predictions}
+new_X <- X[, 1:5] * runif(p, 0.8, 1.2)
+rownames(new_X) <- rownames(X)
+
+risk_scores <- predict(cv_fit$fit, newdata = new_X, type = "risk")
+risk_scores
+```
+
+These risk scores can be paired with downstream evaluation tools or used
+to stratify patients according to the latent survival-linked programs.

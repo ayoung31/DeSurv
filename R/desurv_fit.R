@@ -253,12 +253,12 @@ desurv_fit <- function(
   }
 
   # Full optimization from chosen initialization
-  fit_full <- optimize_loss_cpp(
+  fit_full <- .run_optimize_loss(
     data$X, data$y, data$d,
     best_W, best_H, best_beta,
     hp$alpha, hp$lambda, hp$nu,
     hp$lambdaW, hp$lambdaH,
-    hp$tol, hp$maxit, verbose, TRUE
+    hp$tol, hp$maxit, verbose
   )
 
   Z_full  <- t(data$X) %*% fit_full$W

@@ -2,11 +2,11 @@
 
 S3method(coef,desurv_fit)
 S3method(predict,desurv_fit)
-export(calc_loss_cpp)
+S3method(print,desurv_data)
 export(desurv_alpha_warmstart)
+export(desurv_cv)
 export(desurv_data)
 export(desurv_fit)
 export(gene_filter)
-export(optimize_loss_cpp)
 importFrom(Rcpp,evalCpp)
 useDynLib(DeSurv, .registration=TRUE)
