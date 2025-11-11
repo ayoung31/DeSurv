@@ -4,3 +4,4 @@ src/*.so
 codex/
 /doc/
 /Meta/
+AGENTS.md

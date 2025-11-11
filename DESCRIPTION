@@ -24,7 +24,8 @@ Imports:
     parallel,
     foreach,
     doParallel,
-    cvwrapr
+    cvwrapr,
+    preprocessCore
 LinkingTo:
     Rcpp,
     RcppArmadillo,

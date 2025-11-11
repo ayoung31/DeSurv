@@ -94,6 +94,7 @@
 #' applied at the (hyperparameter, fold) job level; within each job,
 #' \code{desurv_alpha_warmstart} is always called with \code{parallel = FALSE}
 #' to avoid nested parallelism.
+#' @export
 .desurv_cv_grid_warmstart <- function(
     X, y = NULL, d = NULL,
     k_grid,
