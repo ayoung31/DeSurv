@@ -153,7 +153,7 @@
 #'   \code{"max"} (default) or \code{"1se"}. See Details.
 #'
 #' @param parallel_grid Logical; if \code{TRUE}, the CV computations are
-#'   parallelized over the (hyperparameter, fold) jobs using
+#'   parallelized over the (hyperparameter, fold, init) jobs using
 #'   \code{parallel::mclapply()} on non-Windows platforms.
 #' @param ncores_grid Integer or \code{NULL}; number of cores to use when
 #'   \code{parallel_grid = TRUE}. If \code{NULL}, defaults to

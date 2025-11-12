@@ -49,6 +49,8 @@ random starts.
 Internal helper for cross-validation over the full grid of
 \code{k, alpha, lambda, nu, lambdaW, lambdaH} combinations, fitting each
 alpha separately (i.e., without warmstarts). Parallelism (if enabled) is
-applied at the (hyperparameter + alpha, fold) job level.
+applied at the (hyperparameter, fold, init) job level so every random
+start can be scheduled independently. Folds whose training subset contains
+zero events are skipped (with a warning) and contribute \code{NA} C-indices.
 }
 \keyword{internal}

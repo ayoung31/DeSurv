@@ -148,7 +148,7 @@ test_that("desurv_cv cv_only returns raw CV object without refitting", {
       lambdaW_grid = 0.05,
       lambdaH_grid = 0.05,
       n_starts     = 1,
-      nfolds       = 2,
+      nfolds       = 3,
       tol          = 1e-4,
       maxit        = 60,
       verbose      = FALSE,
@@ -166,7 +166,7 @@ test_that("desurv_cv warns and reduces folds when nfolds exceeds data capacity",
   fixture <- make_fixture_dataset(n = 12, seed = 10)
 
   expect_warning(
-    fit <- suppressWarnings(
+    fit <- withCallingHandlers(
       desurv_cv(
         fixture$X,
         fixture$y,
@@ -181,8 +181,14 @@ test_that("desurv_cv warns and reduces folds when nfolds exceeds data capacity",
         nfolds       = 20,
         tol          = 1e-4,
         maxit        = 50,
-        verbose      = FALSE
-      )
+        verbose      = FALSE,
+        cv_only      = TRUE
+      ),
+      warning = function(w) {
+        if (!grepl("reducing nfolds", conditionMessage(w), fixed = TRUE)) {
+          invokeRestart("muffleWarning")
+        }
+      }
     ),
     "reducing nfolds"
   )
@@ -196,10 +202,10 @@ test_that("desurv_cv warns and reduces folds when nfolds exceeds data capacity",
 })
 
 test_that("summary retains folds whose C-index is undefined", {
-  X <- matrix(rexp(4 * 4), nrow = 4)
-  y <- c(5, 4, 3, 2)
-  d <- c(1, 1, 0, 0)
-  folds <- c(1, 1, 2, 2)
+  X <- matrix(rexp(6 * 6), nrow = 6)
+  y <- c(6, 5, 4, 3, 2, 1)
+  d <- c(1, 1, 1, 0, 0, 0)
+  folds <- c(1, 2, 2, 1, 3, 3)
 
   fit <- suppressWarnings(
     desurv_cv(
@@ -213,17 +219,18 @@ test_that("summary retains folds whose C-index is undefined", {
       lambdaW_grid = 0.05,
       lambdaH_grid = 0.05,
       n_starts     = 1,
-      nfolds       = 2,
+      nfolds       = 3,
       folds        = folds,
       tol          = 1e-4,
       maxit        = 40,
-      verbose      = FALSE
+      verbose      = FALSE,
+      cv_only      = TRUE
     )
   )
 
-  fold2 <- subset(fit$summary_fold, fold == 2)
-  expect_equal(nrow(fold2), length(unique(fit$summary_fold$alpha)))
-  expect_true(all(is.na(fold2$mean_cindex_fold)))
+  fold3 <- subset(fit$summary_fold, fold == 3)
+  expect_equal(nrow(fold3), length(unique(fit$summary_fold$alpha)))
+  expect_true(all(is.na(fold3$mean_cindex_fold)))
   expect_true(any(is.na(fit$summary$mean_cindex)))
 })
 

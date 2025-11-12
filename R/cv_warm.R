@@ -5,9 +5,11 @@
 #' \code{k, alpha, lambda, nu, lambdaW, lambdaH}, using warmstarts along
 #' \code{alpha_grid} via \code{desurv_alpha_warmstart()} for each combination
 #' of \code{k, lambda, nu, lambdaW, lambdaH}. Parallelism (if enabled) is
-#' applied at the (hyperparameter, fold) job level; within each job,
-#' \code{desurv_alpha_warmstart} is always called with \code{parallel = FALSE}
-#' to avoid nested parallelism.
+#' applied at the (hyperparameter, fold, init) job level; within each job,
+#' \code{desurv_alpha_warmstart} is invoked for a single initialization so
+#' nested parallelism is still avoided. Folds whose training subset has zero
+#' observed events are skipped (emitting a warning) and contribute
+#' \code{NA} C-indices.
 #' @param dataset Optional vector identifying datasets/cohorts per sample,
 #'   used to stratify folds jointly by event indicator and dataset.
 #' @export
@@ -119,16 +121,21 @@
     ))
   }
 
-  ## --- define (hyper, fold) jobs ---
-  jobs <- expand.grid(
+  ## --- define (hyper, fold) jobs and cache payloads ---
+  base_jobs <- expand.grid(
     h = seq_len(H),
     f = fold_levels,
     KEEP.OUT.ATTRS = FALSE,
     stringsAsFactors = FALSE
   )
+  if (nrow(base_jobs) == 0L) {
+    stop("Hyperparameter grid is empty; specify at least one combination.")
+  }
+  base_jobs$job_id <- seq_len(nrow(base_jobs))
 
-  ## --- inner job function ---
-  run_one_job <- function(job_row) {
+  job_payloads <- vector("list", length = nrow(base_jobs))
+  for (job_idx in seq_len(nrow(base_jobs))) {
+    job_row <- base_jobs[job_idx, , drop = FALSE]
     h <- job_row$h
     f <- job_row$f
 
@@ -138,14 +145,6 @@
     nu_cur      <- hp$nu
     lambdaW_cur <- hp$lambdaW
     lambdaH_cur <- hp$lambdaH
-
-    if (verbose && !parallel_grid) {
-      fold_pos <- match(f, fold_levels)
-      message(sprintf(
-        "Hyper combo %d/%d (k=%d, lambda=%.3g, nu=%.3g, lambdaW=%.3g, lambdaH=%.3g), fold %d/%d",
-        h, H, k_cur, lambda_cur, nu_cur, lambdaW_cur, lambdaH_cur, fold_pos, nfolds_effective
-      ))
-    }
 
     idx_val <- which(folds == f)
     idx_tr  <- setdiff(seq_len(n), idx_val)
@@ -158,21 +157,92 @@
     y_val <- y_full[idx_val]
     d_val <- d_full[idx_val]
 
-    data_tr <- desurv_data(X_tr, y_tr, d_tr, k_cur)
+    has_events_tr <- sum(d_tr) > 0
+    data_tr <- if (has_events_tr) desurv_data(X_tr, y_tr, d_tr, k_cur) else NULL
+
+    seed_fold <- if (is.null(seed)) NULL else {
+      as.integer(seed + 10000L * (h - 1L) + 100L * (f - 1L))
+    }
+
+    job_payloads[[job_idx]] <- list(
+      k_cur       = k_cur,
+      lambda_cur  = lambda_cur,
+      nu_cur      = nu_cur,
+      lambdaW_cur = lambdaW_cur,
+      lambdaH_cur = lambdaH_cur,
+      data_tr     = data_tr,
+      X_val       = X_val,
+      y_val       = y_val,
+      d_val       = d_val,
+      seed_fold   = seed_fold,
+      has_events_tr = has_events_tr
+    )
+  }
+
+  jobs <- base_jobs[rep(seq_len(nrow(base_jobs)), each = n_starts), , drop = FALSE]
+  jobs$init_id <- rep(seq_len(n_starts), times = nrow(base_jobs))
+
+  ## --- inner job function ---
+  run_one_job <- function(job_row) {
+    h <- job_row$h
+    f <- job_row$f
+    init_id <- job_row$init_id
+    payload <- job_payloads[[job_row$job_id]]
+
+    k_cur       <- payload$k_cur
+    lambda_cur  <- payload$lambda_cur
+    nu_cur      <- payload$nu_cur
+    lambdaW_cur <- payload$lambdaW_cur
+    lambdaH_cur <- payload$lambdaH_cur
+
+    if (verbose && !parallel_grid) {
+      if (init_id == 1L) {
+        fold_pos <- match(f, fold_levels)
+        message(sprintf(
+          "Hyper combo %d/%d (k=%d, lambda=%.3g, nu=%.3g, lambdaW=%.3g, lambdaH=%.3g), fold %d/%d",
+          h, H, k_cur, lambda_cur, nu_cur, lambdaW_cur, lambdaH_cur, fold_pos, nfolds_effective
+        ))
+      }
+      message(sprintf("  Initialization %d/%d", init_id, n_starts))
+    }
+
+    if (!payload$has_events_tr) {
+      if (init_id == 1L) {
+        warning(sprintf(
+          "Skipping hyper combo %d/%d, fold %d: training data has zero events; returning NA C-index.",
+          h, H, f
+        ), call. = FALSE)
+      }
+      df <- data.frame(
+        fold    = f,
+        k       = k_cur,
+        lambda  = lambda_cur,
+        nu      = nu_cur,
+        lambdaW = lambdaW_cur,
+        lambdaH = lambdaH_cur,
+        init_id = init_id,
+        alpha   = alpha_grid,
+        cindex  = NA_real_,
+        row.names = NULL
+      )
+      df <- df[, c("fold", "k", "lambda", "nu", "lambdaW", "lambdaH",
+                   "init_id", "alpha", "cindex")]
+      return(df)
+    }
 
     # unique seed for this (hyper, fold)
-    seed_fold <- if (is.null(seed)) NULL else as.integer(seed + 10000L * (h - 1L) + 100L * (f - 1L))
+    seed_fold <- payload$seed_fold
 
-    # warmstart paths on TRAINING data for this combo (sequential inside)
+    # warmstart path on TRAINING data for this combo (sequential inside)
     ws_res <- desurv_alpha_warmstart(
-      X          = data_tr,
+      X          = payload$data_tr,
       alpha_grid = alpha_grid,
       lambda     = lambda_cur,
       nu         = nu_cur,
       lambdaW    = lambdaW_cur,
       lambdaH    = lambdaH_cur,
-      n_starts   = n_starts,
-      seed       = seed_fold,
+      n_starts   = 1L,
+      seed       = if (is.null(seed_fold)) NULL else as.integer(seed_fold + (init_id - 1L)),
       tol        = tol,
       maxit      = maxit,
       parallel   = FALSE,    # important: avoid nested parallelism
@@ -180,33 +250,31 @@
       verbose    = verbose && !parallel_grid
     )
 
-    # compute validation C-index matrix: n_starts x A
-    cmat_val <- matrix(NA_real_, nrow = n_starts, ncol = A)
-    for (init_id in seq_len(n_starts)) {
-      for (i in seq_len(A)) {
-        fit_ji <- ws_res$fits[[init_id]][[i]]
-        lp_val <- predict(fit_ji, newdata = X_val, type = "lp")
+    # compute validation C-index vector for this init: length A
+    cindex_vals <- rep(NA_real_, A)
+    fits_one <- ws_res$fits[[1L]]
+    for (i in seq_len(A)) {
+      fit_ji <- fits_one[[i]]
+      lp_val <- predict(fit_ji, newdata = payload$X_val, type = "lp")
 
-        cmat_val[init_id, i] <-
-          if (sum(d_val) == 0L) NA_real_
-        else cvwrapr::getCindex(lp_val, survival::Surv(y_val, d_val))
-      }
+      cindex_vals[i] <-
+        if (sum(payload$d_val) == 0L) NA_real_
+      else cvwrapr::getCindex(lp_val, survival::Surv(payload$y_val, payload$d_val))
     }
 
-    # tidy data.frame for this (hyper, fold) job
-    df <- expand.grid(
-      init_id = seq_len(n_starts),
+    # tidy data.frame for this (hyper, fold, init) job
+    df <- data.frame(
+      fold    = f,
+      k       = k_cur,
+      lambda  = lambda_cur,
+      nu      = nu_cur,
+      lambdaW = lambdaW_cur,
+      lambdaH = lambdaH_cur,
+      init_id = init_id,
       alpha   = alpha_grid,
-      KEEP.OUT.ATTRS = FALSE,
-      stringsAsFactors = FALSE
+      cindex  = cindex_vals,
+      row.names = NULL
     )
-    df$cindex <- as.vector(t(cmat_val))
-    df$fold   <- f
-    df$k       <- k_cur
-    df$lambda  <- lambda_cur
-    df$nu      <- nu_cur
-    df$lambdaW <- lambdaW_cur
-    df$lambdaH <- lambdaH_cur
 
     # reorder columns a bit
     df <- df[, c("fold", "k", "lambda", "nu", "lambdaW", "lambdaH",
@@ -227,7 +295,10 @@
     }
     ncores_grid <- max(1L, min(as.integer(ncores_grid), nrow(jobs)))
     if (verbose) {
-      message(sprintf("Running %d (hyper, fold) jobs on %d cores.", nrow(jobs), ncores_grid))
+      message(sprintf(
+        "Running %d (hyper, fold, init) jobs on %d cores.",
+        nrow(jobs), ncores_grid
+      ))
     }
 
     job_results <- parallel::mclapply(
@@ -254,7 +325,8 @@
   summary_fold <- stats::aggregate(
     cindex ~ fold + k + lambda + nu + lambdaW + lambdaH + alpha,
     data = cv_results,
-    FUN  = mean_fold_safe
+    FUN  = mean_fold_safe,
+    na.action = stats::na.pass
   )
   names(summary_fold)[names(summary_fold) == "cindex"] <- "mean_cindex_fold"
 
@@ -269,7 +341,11 @@
   summary_mean <- stats::aggregate(
     mean_cindex_fold ~ k + lambda + nu + lambdaW + lambdaH + alpha,
     data = summary_fold,
-    FUN  = function(x) mean(x, na.rm = TRUE)
+    FUN  = function(x) {
+      if (anyNA(x) || any(!is.finite(x))) return(NA_real_)
+      mean(x)
+    },
+    na.action = stats::na.pass
   )
   names(summary_mean)[names(summary_mean) == "mean_cindex_fold"] <- "mean_cindex"
 
@@ -277,7 +353,8 @@
   summary_se <- stats::aggregate(
     mean_cindex_fold ~ k + lambda + nu + lambdaW + lambdaH + alpha,
     data = summary_fold,
-    FUN  = se_fun
+    FUN  = se_fun,
+    na.action = stats::na.pass
   )
   names(summary_se)[names(summary_se) == "mean_cindex_fold"] <- "se_cindex"
 
