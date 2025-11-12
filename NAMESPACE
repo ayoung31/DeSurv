@@ -2,9 +2,12 @@
 
 S3method(coef,desurv_fit)
 S3method(predict,desurv_fit)
+S3method(print,desurv_bo)
 S3method(print,desurv_data)
 export(.desurv_cv_grid_warmstart)
 export(desurv_alpha_warmstart)
+export(desurv_bayesopt)
+export(desurv_bo_default_bounds)
 export(desurv_cv)
 export(desurv_cv_preprocess)
 export(desurv_data)
