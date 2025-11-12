@@ -12,7 +12,8 @@ preprocess_data(
   samp_keeps = NULL,
   ngene = 1000,
   genes = NULL,
-  method_trans_train = c("rank", "quant", "none")
+  method_trans_train = c("rank", "quant", "none"),
+  verbose = TRUE
 )
 }
 \arguments{
@@ -35,6 +36,8 @@ filtering).}
 
 \item{method_trans_train}{Character string: \code{"rank"}, \code{"quant"}, or \code{"none"}
 describing the per-sample transformation applied after filtering.}
+
+\item{verbose}{Logical; if \code{TRUE}, emit preprocessing progress messages.}
 }
 \value{
 A list with components

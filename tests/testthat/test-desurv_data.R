@@ -57,3 +57,17 @@ test_that(".validate_desurv_custom_init enforces dimensions and positivity", {
     "must be non-negative"
   )
 })
+
+
+test_that("desurv_data stores dataset labels", {
+  fixture <- make_fixture_dataset()
+  dataset <- rep(c("A", "B"), length.out = fixture$n)
+  dd <- desurv_data(
+    fixture$X,
+    fixture$y,
+    fixture$d,
+    fixture$k,
+    dataset = dataset
+  )
+  expect_equal(dd$dataset, as.character(dataset))
+})

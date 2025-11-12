@@ -15,5 +15,7 @@
 ## usethis namespace: start
 #' @useDynLib DeSurv, .registration=TRUE
 #' @importFrom Rcpp evalCpp
+#' @importFrom stats predict runif
+#' @importFrom utils head
 ## usethis namespace: end
 NULL

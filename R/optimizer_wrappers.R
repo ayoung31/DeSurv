@@ -45,13 +45,16 @@
   max_iter_beta <- as.integer(max_iter_beta)
   max_iter_beta_final <- as.integer(max_iter_beta_final)
 
+  # C++ optimizer should stay silent; verbose controls only R-side messaging.
+  cpp_verbose <- FALSE
+
   optimize_loss_cpp(
     X, y, d,
     k, n, p, n_event,
     W0, H0, beta0,
     alpha, lambda, nu,
     lambdaW, lambdaH,
-    tol, maxit, verbose,
+    tol, maxit, cpp_verbose,
     theta_init, rho, max_backtracks,
     eps_beta, max_iter_beta, max_iter_beta_final
   )

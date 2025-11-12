@@ -17,6 +17,7 @@
 #'   filtering).
 #' @param method_trans_train Character string: `"rank"`, `"quant"`, or `"none"`
 #'   describing the per-sample transformation applied after filtering.
+#' @param verbose Logical; if `TRUE`, emit preprocessing progress messages.
 #'
 #' @return A list with components
 #'   \describe{
@@ -35,7 +36,8 @@ preprocess_data <- function(
     samp_keeps         = NULL,
     ngene              = 1000,
     genes              = NULL,
-    method_trans_train = c("rank", "quant", "none")
+    method_trans_train = c("rank", "quant", "none"),
+    verbose            = TRUE
 ) {
   method_trans_train <- match.arg(method_trans_train)
   X <- as.matrix(X)
@@ -97,6 +99,15 @@ preprocess_data <- function(
     keep_genes <- Reduce(intersect, lapply(per_dataset, rownames))
     if (length(keep_genes) == 0L) {
       stop("No overlapping genes found across datasets after filtering.")
+    }
+    if (isTRUE(verbose)) {
+      message(
+        paste0(
+          "After preprocessing and dataset merging, ",
+          length(keep_genes),
+          " genes were kept"
+        )
+      )
     }
     X <- X[keep_genes, , drop = FALSE]
   } else {

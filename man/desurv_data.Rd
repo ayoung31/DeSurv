@@ -4,7 +4,7 @@
 \alias{desurv_data}
 \title{Construct a DeSurv dataset}
 \usage{
-desurv_data(X, y, d, k)
+desurv_data(X, y, d, k, dataset = NULL)
 }
 \arguments{
 \item{X}{Numeric matrix (\eqn{p \times n}) of features (e.g., genes by samples).}
@@ -14,6 +14,9 @@ desurv_data(X, y, d, k)
 \item{d}{Numeric (0/1) vector of event indicators of length \eqn{n}.}
 
 \item{k}{Positive integer rank (number of latent factors).}
+
+\item{dataset}{Optional vector (length \code{ncol(X)}) identifying the
+dataset/cohort for each sample. Used for downstream stratified folds.}
 }
 \value{
 An object of class \code{"desurv_data"} containing the validated inputs.

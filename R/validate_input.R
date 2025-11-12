@@ -1,5 +1,5 @@
 # R/validate.R
-.validate_desurv_data <- function(X, y, d, k) {
+.validate_desurv_data <- function(X, y, d, k, dataset = NULL) {
   X <- as.matrix(X)
   if (!is.numeric(X)) stop("X must be a numeric matrix.")
   if (anyNA(X) || !all(is.finite(X))) stop("X cannot contain NA/NaN/Inf.")
@@ -29,11 +29,24 @@
     stop("k must be a positive integer <= min(nrow(X), ncol(X)).")
   }
 
+  if (is.null(dataset)) {
+    dataset <- rep("_all", n)
+  } else {
+    if (length(dataset) != n) {
+      stop("`dataset` must have length equal to ncol(X).")
+    }
+    if (anyNA(dataset)) {
+      stop("`dataset` cannot contain NA.")
+    }
+  }
+  dataset <- as.character(dataset)
+
   list(
     X = X,
     y = y,
     d = d,
     k = k,
+    dataset = dataset,
     p = p,
     n = n
   )
@@ -51,13 +64,15 @@
 #' @param y Numeric vector of survival times of length \eqn{n}.
 #' @param d Numeric (0/1) vector of event indicators of length \eqn{n}.
 #' @param k Positive integer rank (number of latent factors).
+#' @param dataset Optional vector (length \code{ncol(X)}) identifying the
+#'   dataset/cohort for each sample. Used for downstream stratified folds.
 #'
 #' @return
 #' An object of class \code{"desurv_data"} containing the validated inputs.
 #'
 #' @export
-desurv_data <- function(X, y, d, k) {
-  args <- .validate_desurv_data(X, y, d, k)
+desurv_data <- function(X, y, d, k, dataset = NULL) {
+  args <- .validate_desurv_data(X, y, d, k, dataset = dataset)
   structure(args, class = "desurv_data")
 }
 
@@ -71,11 +86,14 @@ print.desurv_data <- function(x, ...) {
 }
 
 # Internal: accept either raw inputs or a desurv_data object
-.as_desurv_data <- function(X, y = NULL, d = NULL, k = NULL) {
+.as_desurv_data <- function(X, y = NULL, d = NULL, k = NULL, dataset = NULL) {
   if (inherits(X, "desurv_data")) {
+    if (!is.null(dataset)) {
+      warning("Ignoring `dataset` because `X` is already a desurv_data object.")
+    }
     return(X)
   }
-  desurv_data(X = X, y = y, d = d, k = k)
+  desurv_data(X = X, y = y, d = d, k = k, dataset = dataset)
 }
 
 

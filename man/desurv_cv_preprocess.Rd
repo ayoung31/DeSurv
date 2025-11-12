@@ -2,7 +2,7 @@
 % Please edit documentation in R/desurv_cv_preprocess.R
 \name{desurv_cv_preprocess}
 \alias{desurv_cv_preprocess}
-\title{Preprocess expression data and run cross-validated DeSurv}
+\title{Preprocess expression data then run cross-validated DeSurv (deprecated)}
 \usage{
 desurv_cv_preprocess(
   X,
@@ -19,45 +19,37 @@ desurv_cv_preprocess(
 \arguments{
 \item{X}{Numeric matrix (genes x samples) of expression values.}
 
-\item{y}{Numeric vector of survival/event times aligned with the columns of
-\code{X}.}
+\item{y}{Numeric vector of survival times, length \code{ncol(X)}.}
 
-\item{d}{Numeric (0/1) event indicator vector aligned with \code{X}.}
+\item{d}{Numeric (0/1) event indicator vector, length \code{ncol(X)}.}
 
-\item{dataset}{Vector identifying the cohort/dataset for each sample (length
-must equal \code{ncol(X)}).}
+\item{dataset}{Vector identifying the cohort/dataset for each sample.}
 
 \item{samp_keeps}{Optional logical/integer/character index of samples to
-retain prior to preprocessing.}
+retain before preprocessing. Defaults to all samples.}
 
-\item{ngene}{Integer; if \code{genes} is \code{NULL}, the number of
-highly expressed/variable genes to keep per dataset (see
-\code{\link{preprocess_data}}).}
+\item{ngene}{Integer number of genes to retain per dataset when \code{genes} is
+\code{NULL}.}
 
-\item{genes}{Optional character vector of gene IDs to restrict to. If
-\code{NULL}, top \code{ngene} genes are selected by
-\code{\link{gene_filter}} within each dataset.}
+\item{genes}{Optional character vector of genes to keep (overrides \code{ngene}
+filtering).}
 
-\item{method_trans_train}{Character; one of \code{"rank"},
-\code{"quant"}, or \code{"none"}, passed to \code{preprocess_data()}
-to control the within-sample transformation.}
+\item{method_trans_train}{Character string: \code{"rank"}, \code{"quant"}, or \code{"none"}
+describing the per-sample transformation applied after filtering.}
 
-\item{...}{Additional arguments passed directly to \code{\link{desurv_cv}}
-(e.g., \code{k_grid}, \code{alpha_grid}, \code{lambda_grid},
-\code{nu_grid}, \code{lambdaW_grid}, \code{lambdaH_grid},
-\code{n_starts}, \code{nfolds}, \code{rule}, etc.).}
+\item{...}{Additional arguments passed to \code{\link{desurv_cv}} (e.g.,
+\code{k_grid}, \code{alpha_grid}, \code{lambda_grid}, etc.).}
 }
 \value{
-An object of class \code{"desurv_cv"} as returned by \code{desurv_cv()},
-with an additional component \code{$preprocess} containing
-preprocessing metadata (selected genes, transformation, and sample
-subset).
+A \code{"desurv_cv"} object identical to calling
+\code{desurv_cv(preprocess = TRUE, ...)}.
 }
 \description{
-Convenience wrapper that first calls \code{\link{preprocess_data}} on raw
-multi-cohort expression inputs and then passes the processed expression
-matrix and survival outcomes to \code{\link{desurv_cv}}.
+This convenience wrapper has been superseded by the
+\code{preprocess = TRUE} option inside \code{\link{desurv_cv}}. It
+remains for backward compatibility but will emit a soft deprecation
+warning.
 }
 \seealso{
-\code{\link{preprocess_data}}, \code{\link{desurv_cv}}
+\code{\link{desurv_cv}}, \code{\link{preprocess_data}}
 }

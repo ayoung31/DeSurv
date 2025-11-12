@@ -211,10 +211,6 @@ desurv_fit <- function(
   use_custom_init <- !is.null(W0) || !is.null(H0) || !is.null(beta0)
 
   if (use_custom_init) {
-    if (verbose) {
-      message("Using user-specified initialization for full optimization; ",
-              "ignoring tol_init, imaxit, ninit, parallel_init, ncores_init.")
-    }
     init_par <- .validate_desurv_custom_init(data$X, data$k, W0, H0, beta0)
     best_W   <- init_par$W0
     best_H   <- init_par$H0

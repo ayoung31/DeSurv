@@ -4,10 +4,10 @@
 \alias{.desurv_make_folds_stratified}
 \title{Stratified fold assignment by event indicator}
 \usage{
-.desurv_make_folds_stratified(d, nfolds, seed = NULL)
+.desurv_make_folds_stratified(d, dataset = NULL, nfolds, seed = NULL)
 }
 \description{
 Create stratified K-fold assignments so that events (d == 1) and
-non-events (d == 0) are approximately balanced across folds.
+datasets are approximately balanced across folds.
 }
 \keyword{internal}

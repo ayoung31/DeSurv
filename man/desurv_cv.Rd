@@ -8,6 +8,7 @@ desurv_cv(
   X,
   y = NULL,
   d = NULL,
+  dataset = NULL,
   k_grid,
   alpha_grid,
   lambda_grid,
@@ -20,10 +21,17 @@ desurv_cv(
   seed = 123,
   tol = 1e-06,
   maxit = 1000,
+  engine = c("warmstart", "cold"),
   rule = c("max", "1se"),
   parallel_grid = FALSE,
   ncores_grid = NULL,
-  verbose = TRUE
+  verbose = TRUE,
+  preprocess = FALSE,
+  samp_keeps = NULL,
+  ngene = 1000,
+  genes = NULL,
+  method_trans_train = c("rank", "quant", "none"),
+  cv_only = FALSE
 )
 }
 \arguments{
@@ -38,6 +46,11 @@ desurv_cv(
 \item{d}{Numeric (0/1) vector of event indicators of length \eqn{n}.
 Used only if \code{X} is a matrix or data frame; ignored if \code{X}
 is a \code{"desurv_data"} object.}
+
+\item{dataset}{Optional vector identifying the dataset or cohort for each
+sample. When provided (or embedded within a \code{"desurv_data"}
+object), automatically generated folds are stratified jointly by
+event indicator and dataset.}
 
 \item{k_grid}{Numeric or integer vector of candidate ranks (number of latent
 factors) to consider.}
@@ -57,8 +70,12 @@ in \eqn{[0, 1]}.}
 \code{H} factor.}
 
 \item{n_starts}{Integer; number of random initialization paths per
-hyperparameter combination and fold. Each path is warmstarted along
-\code{alpha_grid} via \code{\link{desurv_alpha_warmstart}}.}
+hyperparameter combination and fold. When \code{engine = "warmstart"},
+each path is warmstarted along \code{alpha_grid} via
+\code{\link{desurv_alpha_warmstart}}. The \code{"cold"} engine now
+forwards \code{n_starts} directly to \code{\link{desurv_fit}} as
+\code{ninit}, so each \code{alpha} inside a fold is refit once using
+that many internal starts.}
 
 \item{nfolds}{Integer; number of CV folds.}
 
@@ -68,7 +85,7 @@ hyperparameter combination and fold. Each path is warmstarted along
 events and non-events are approximately balanced.}
 
 \item{seed}{Integer or \code{NULL}; base seed used for fold generation
-and for randomness inside the warmstart paths.}
+and for randomness inside the initialization paths.}
 
 \item{tol}{Numeric convergence tolerance for the full optimizations inside
 \code{\link{desurv_fit}} during CV and in the final refit.}
@@ -76,6 +93,11 @@ and for randomness inside the warmstart paths.}
 \item{maxit}{Integer maximum number of iterations for each full
 optimization inside \code{\link{desurv_fit}} during CV and in the final
 refit.}
+
+\item{engine}{Character string specifying which internal CV engine to
+use. The \code{"warmstart"} engine reuses alpha paths via
+\code{\link{desurv_alpha_warmstart}}; \code{"cold"} calls
+\code{\link{.desurv_cv_grid}} to fit each alpha independently.}
 
 \item{rule}{Character string specifying the model selection rule; one of
 \code{"max"} (default) or \code{"1se"}. See Details.}
@@ -89,12 +111,34 @@ parallelized over the (hyperparameter, fold) jobs using
 \code{parallel::detectCores()} capped at the number of such jobs.}
 
 \item{verbose}{Logical; if \code{TRUE}, progress messages are printed.}
+
+\item{preprocess}{Logical; if \code{TRUE}, run
+\code{\link{preprocess_data}} on the raw inputs before cross-validation.
+Requires that \code{X} be a numeric matrix/data frame (not a
+\code{"desurv_data"} object) and that \code{dataset} be supplied.}
+
+\item{samp_keeps}{Optional logical/integer/character index of samples to
+keep prior to preprocessing (only used when \code{preprocess = TRUE}).}
+
+\item{ngene}{Integer giving the number of genes to retain per dataset when
+\code{preprocess = TRUE} and \code{genes} is \code{NULL}.}
+
+\item{genes}{Optional character vector of genes to keep exactly when
+\code{preprocess = TRUE}. Overrides \code{ngene} selection.}
+
+\item{method_trans_train}{Character; one of \code{"rank"},
+\code{"quant"}, or \code{"none"}, forwarded to
+\code{\link{preprocess_data}} when \code{preprocess = TRUE}.}
+
+\item{cv_only}{Logical; if \code{TRUE}, skip the final refit and return
+the raw cross-validation object produced by the selected engine.}
 }
 \value{
 An object of class \code{"desurv_cv"} with components:
 \itemize{
 \item \code{fit}: the final \code{"desurv_fit"} object refit on the full
-data using the chosen hyperparameter combination.
+data using the chosen hyperparameter combination (omitted when
+\code{cv_only = TRUE}).
 \item \code{best}: a list describing the selected hyperparameters, with
 elements \code{k}, \code{lambda}, \code{nu}, \code{lambdaW},
 \code{lambdaH}, \code{alpha}, \code{mean_cindex}, and
@@ -112,6 +156,8 @@ fold) for each \code{(hyperparameters, alpha)}.
 \item \code{alpha_grid}: the alpha grid used.
 \item \code{hyper_grid}: the hyperparameter grid (excluding alpha).
 \item \code{folds}: the fold assignments used.
+\item \code{preprocess}: metadata describing any preprocessing that was
+applied (only present when \code{preprocess = TRUE}).
 \item \code{call}: the original function call.
 }
 }
@@ -122,21 +168,28 @@ model, select the combination that maximizes mean validation C-index
 using the chosen hyperparameters.
 }
 \details{
-This function is a high-level wrapper around the internal workhorse
-\code{.desurv_cv_grid_warmstart()}, which:
+This function is a high-level wrapper around the internal CV helpers
+\code{.desurv_cv_grid_warmstart()} (default) and
+\code{.desurv_cv_grid()} (when \code{engine = "cold"}), which:
 \itemize{
 \item builds a grid of hyperparameters
 \code{k, lambda, nu, lambdaW, lambdaH},
-\item performs K-fold cross-validation for each combination, using
-warmstarts along \code{alpha_grid} within each training fold via
-\code{\link{desurv_alpha_warmstart}},
+\item performs K-fold cross-validation for each combination; with
+\code{engine = "warmstart"} the fits are warmstarted along
+\code{alpha_grid} inside each fold via
+\code{\link{desurv_alpha_warmstart}}, whereas the \code{"cold"}
+engine refits each \code{alpha} independently,
 \item computes validation C-indices for each
-\code{(k, lambda, nu, lambdaW, lambdaH, alpha, fold, init_id)},
+\code{(k, lambda, nu, lambdaW, lambdaH, alpha, fold)} combination.
+With the warmstart engine we retain multiple initialization paths
+(tracked via \code{init_id}); the cold engine forwards
+\code{n_starts} to \code{desurv_fit()} as \code{ninit} and stores
+a single score per combination.
 \item summarizes results in two stages:
 \enumerate{
 \item For each fold, averages the C-index across random
-initialization paths (inits), yielding a fold-level mean
-C-index.
+initialization paths when they exist (warmstart engine);
+otherwise the fold-level mean is the single available score.
 \item Across folds, computes the overall mean and standard error
 (SE) of these fold-level means. The SE is calculated as the
 standard deviation of the fold-level means divided by the
@@ -144,11 +197,19 @@ square root of the number of non-missing folds.
 }
 }
 
-The present function uses these precomputed summaries directly from
-\code{.desurv_cv_grid_warmstart()}:
+Optionally, users can request that the raw expression matrix be filtered
+and transformed via \code{\link{preprocess_data}} before CV by setting
+\code{preprocess = TRUE} and supplying the associated arguments
+(\code{dataset}, \code{samp_keeps}, \code{ngene}, \code{genes},
+\code{method_trans_train}). This subsumes the behavior previously exposed
+via \code{\link{desurv_cv_preprocess}}.
+
+The present function uses these precomputed summaries directly from the
+selected engine:
 \itemize{
-\item \code{summary_fold}: contains the mean C-index across inits for
-each fold, \code{alpha}, and hyperparameter combination.
+\item \code{summary_fold}: contains the mean C-index for
+each fold, \code{alpha}, and hyperparameter combination (after
+averaging across initialization paths when applicable).
 \item \code{summary}: contains the mean and SE of C-index across folds
 (after averaging across inits within each fold) for each
 \code{(k, lambda, nu, lambdaW, lambdaH, alpha)} combination.
@@ -187,5 +248,6 @@ full dataset by calling \code{\link{desurv_fit}} with the chosen settings.
 }
 \seealso{
 \code{\link{desurv_fit}}, \code{\link{desurv_alpha_warmstart}},
-\code{\link{.desurv_cv_grid_warmstart}}
+\code{\link{preprocess_data}}, \code{\link{desurv_cv_preprocess}},
+\code{\link{.desurv_cv_grid_warmstart}}, \code{\link{.desurv_cv_grid}}
 }
