@@ -35,8 +35,10 @@ Internal helper for cross-validation over a grid of hyperparameters
 \code{k, alpha, lambda, nu, lambdaW, lambdaH}, using warmstarts along
 \code{alpha_grid} via \code{desurv_alpha_warmstart()} for each combination
 of \code{k, lambda, nu, lambdaW, lambdaH}. Parallelism (if enabled) is
-applied at the (hyperparameter, fold) job level; within each job,
-\code{desurv_alpha_warmstart} is always called with \code{parallel = FALSE}
-to avoid nested parallelism.
+applied at the (hyperparameter, fold, init) job level; within each job,
+\code{desurv_alpha_warmstart} is invoked for a single initialization so
+nested parallelism is still avoided. Folds whose training subset has zero
+observed events are skipped (emitting a warning) and contribute
+\code{NA} C-indices.
 }
 \keyword{internal}

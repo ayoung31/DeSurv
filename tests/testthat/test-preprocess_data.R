@@ -232,8 +232,8 @@ test_that("preprocess_data rank transform produces column-wise ranks", {
     verbose            = FALSE
   )
 
-  expect_equal(res$ex[1, ], c(2, 2, 2))
-  expect_equal(res$ex[2, ], c(1, 1, 1))
+  expect_equal(unname(res$ex[1, ]), c(2, 2, 2))
+  expect_equal(unname(res$ex[2, ]), c(1, 1, 1))
 })
 
 test_that("preprocess_data quant transform applies quantile normalization", {
