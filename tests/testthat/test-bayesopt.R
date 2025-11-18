@@ -30,6 +30,7 @@ test_that("desurv_bayesopt runs on a small fixture", {
     n_init = 2,
     n_iter = 1,
     candidate_pool = 10,
+    ntop = 5,
     seed = 123,
     verbose = FALSE
   )
@@ -38,6 +39,7 @@ test_that("desurv_bayesopt runs on a small fixture", {
   expect_true(nrow(fit$history) >= 2)
   expect_true(all(names(fit$best$params) %in% names(bounds)))
   expect_false(is.na(fit$best$mean_cindex))
+  expect_equal(fit$fixed$ntop, 5)
 })
 
 test_that("desurv_bo_default_bounds exposes expected keys", {
@@ -45,4 +47,5 @@ test_that("desurv_bo_default_bounds exposes expected keys", {
   expect_type(bounds, "list")
   expect_true(all(c("k_grid", "alpha_grid", "lambda_grid") %in% names(bounds)))
   expect_false(any(grepl("lambdaW_grid", names(bounds))))
+  expect_true("ntop" %in% names(bounds))
 })

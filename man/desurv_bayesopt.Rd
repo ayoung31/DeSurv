@@ -21,6 +21,7 @@ desurv_bayesopt(
   exploration_weight = 0,
   seed = NULL,
   cv_verbose = FALSE,
+  ntop = NULL,
   verbose = TRUE,
   ...
 )
@@ -61,6 +62,10 @@ improvement formula to encourage exploration.}
 \code{desurv_cv()} calls. The optimiser itself still reports progress via
 \code{verbose}.}
 
+\item{ntop}{Optional positive integer passed to \code{\link[=desurv_cv]{desurv_cv()}} to restrict
+each factor to its top genes when scoring validation folds. Set to
+\code{NULL} or a non-positive value to disable the filtering.}
+
 \item{verbose}{Logical; print progress after each evaluation/iteration.}
 
 \item{...}{Additional arguments forwarded to \code{\link[=desurv_cv]{desurv_cv()}} (for example
@@ -76,6 +81,7 @@ An object of class \code{desurv_bo} containing:
 \item \code{fixed}: fixed hyperparameters supplied through \code{bo_fixed}.
 \item \code{seed}: RNG seed used internally.
 \item \code{call}: original function call.
+\item \code{km_fit}: last successfully fitted Gaussian-process surrogate (or \code{NULL} if skipped).
 }
 }
 \description{

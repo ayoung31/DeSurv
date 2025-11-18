@@ -25,6 +25,7 @@ desurv_cv(
   rule = c("max", "1se"),
   parallel_grid = FALSE,
   ncores_grid = NULL,
+  ntop = NULL,
   verbose = TRUE,
   preprocess = FALSE,
   samp_keeps = NULL,
@@ -109,6 +110,11 @@ parallelized over the (hyperparameter, fold, init) jobs using
 \item{ncores_grid}{Integer or \code{NULL}; number of cores to use when
 \code{parallel_grid = TRUE}. If \code{NULL}, defaults to
 \code{parallel::detectCores()} capped at the number of such jobs.}
+
+\item{ntop}{Optional positive integer specifying how many genes per factor
+should be retained when computing fold-level linear predictors via
+\code{desurv_get_top_genes()}. Set to \code{NULL} or a non-positive value
+to disable this filtering and revert to the original predictions.}
 
 \item{verbose}{Logical; if \code{TRUE}, progress messages are printed.}
 

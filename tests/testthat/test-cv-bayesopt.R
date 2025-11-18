@@ -13,7 +13,8 @@ test_that("desurv_cv_bayesopt runs on a small fixture", {
     nu_grid = list(lower = 0.3, upper = 0.7),
     lambdaW_grid = list(lower = 0, upper = 0.01),
     lambdaH_grid = list(lower = 0, upper = 0.01),
-    n_starts = list(lower = 1, upper = 2, type = "integer")
+    n_starts = list(lower = 1, upper = 2, type = "integer"),
+    ntop = list(lower = 10, upper = 20, type = "integer")
   )
 
   fit <- desurv_cv_bayesopt(
@@ -38,6 +39,8 @@ test_that("desurv_cv_bayesopt runs on a small fixture", {
   expect_true(all(names(fit$best$params) %in% names(bounds)))
   expect_false(is.na(fit$best$mean_cindex))
   expect_true(fit$best$mean_cindex >= 0 && fit$best$mean_cindex <= 1)
+  expect_true("ntop" %in% names(fit$history))
+  expect_null(fit$fixed$ntop)
 })
 
 test_that("desurv_cv_bo_default_bounds exposes expected keys", {
@@ -51,6 +54,7 @@ test_that("desurv_cv_bo_default_bounds exposes expected keys", {
   expect_false(any(grepl("lambdaW_grid", names(bounds))))
   expect_true("n_starts" %in% names(bounds))
   expect_true("ngene" %in% names(bounds))
+  expect_true("ntop" %in% names(bounds))
 })
 
 test_that("desurv_cv_bo_default_bounds respects include flags", {
@@ -66,6 +70,7 @@ test_that("desurv_cv_bo_default_bounds respects include flags", {
   expect_false("lambdaH_grid" %in% names(bounds_minimal))
   expect_false("n_starts" %in% names(bounds_minimal))
   expect_false("ngene" %in% names(bounds_minimal))
+  expect_true("ntop" %in% names(bounds_minimal))
 
   # Test with all includes TRUE
   bounds_full <- desurv_cv_bo_default_bounds(
@@ -78,6 +83,7 @@ test_that("desurv_cv_bo_default_bounds respects include flags", {
   expect_true("lambdaH_grid" %in% names(bounds_full))
   expect_true("n_starts" %in% names(bounds_full))
   expect_true("ngene" %in% names(bounds_full))
+  expect_true("ntop" %in% names(bounds_full))
 })
 
 test_that("desurv_cv_bayesopt handles errors gracefully", {
@@ -114,7 +120,8 @@ test_that("desurv_cv_bayesopt fixed params are stored correctly", {
     nu_grid = list(lower = 0.3, upper = 0.7),
     lambdaW_grid = list(lower = 0, upper = 0.01),
     lambdaH_grid = list(lower = 0, upper = 0.01),
-    n_starts = list(lower = 1, upper = 2, type = "integer")
+    n_starts = list(lower = 1, upper = 2, type = "integer"),
+    ntop = list(lower = 10, upper = 20, type = "integer")
   )
 
   fit <- desurv_cv_bayesopt(
@@ -137,9 +144,50 @@ test_that("desurv_cv_bayesopt fixed params are stored correctly", {
   expect_equal(fit$fixed$tol, 1e-4)
   expect_equal(fit$fixed$maxit, 100)
   expect_equal(fit$fixed$engine, "cold")
+  expect_null(fit$fixed$ntop)
 })
 
 test_that("print.desurv_cv_bo works", {
+  skip_on_cran()
+  skip_if_not_installed("DiceKriging")
+  skip_if_not_installed("lhs")
+
+  fixture <- make_fixture_dataset(n = 16, seed = 99)
+
+  bounds <- list(
+    k_grid = list(lower = 2, upper = 3, type = "integer"),
+    alpha_grid = list(lower = 0.2, upper = 0.4),
+    lambda_grid = list(lower = 0.05, upper = 0.2),
+    nu_grid = list(lower = 0.3, upper = 0.7),
+    lambdaW_grid = list(lower = 0, upper = 0.01),
+    lambdaH_grid = list(lower = 0, upper = 0.01),
+    n_starts = list(lower = 1, upper = 2, type = "integer"),
+    ntop = list(lower = 10, upper = 20, type = "integer")
+  )
+
+  fit <- desurv_cv_bayesopt(
+    X = fixture$X,
+    y = fixture$y,
+    d = fixture$d,
+    preprocess = FALSE,
+    engine = "cold",
+    nfolds = 2,
+    tol = 1e-4,
+    maxit = 100,
+    bo_bounds = bounds,
+    n_init = 2,
+    n_iter = 1,
+    seed = 123,
+    verbose = FALSE
+  )
+
+  # Should not error
+  expect_output(print(fit), "Bayesian optimisation for desurv_cv")
+  expect_output(print(fit), "Evaluations")
+  expect_output(print(fit), "Best C-index")
+})
+
+test_that("desurv_cv_bayesopt stores ntop when provided", {
   skip_on_cran()
   skip_if_not_installed("DiceKriging")
   skip_if_not_installed("lhs")
@@ -164,16 +212,14 @@ test_that("print.desurv_cv_bo works", {
     engine = "cold",
     nfolds = 2,
     tol = 1e-4,
-    maxit = 100,
+    maxit = 30,
+    ntop = 40,
     bo_bounds = bounds,
     n_init = 2,
     n_iter = 1,
-    seed = 123,
+    seed = 456,
     verbose = FALSE
   )
 
-  # Should not error
-  expect_output(print(fit), "Bayesian optimisation for desurv_cv")
-  expect_output(print(fit), "Evaluations")
-  expect_output(print(fit), "Best C-index")
+  expect_equal(fit$fixed$ntop, 40)
 })

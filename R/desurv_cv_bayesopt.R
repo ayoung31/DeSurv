@@ -16,6 +16,9 @@
 #' @param nfolds,tol,maxit Fixed CV/optimization parameters passed to
 #'   [desurv_cv()]. These can also be tuned via `bo_bounds` if desired, but
 #'   typically you want to fix them for computational efficiency.
+#' @param ntop Optional positive integer passed to [desurv_cv()] to restrict
+#'   the validation predictor to the top genes per factor. Set to `NULL` or a
+#'   non-positive value to disable this filtering.
 #' @param bo_bounds Named list describing the search space for hyperparameters
 #'   to tune. Each entry must be either a numeric vector of length two
 #'   (`c(lower, upper)`) or a list with elements `lower`, `upper`, and
@@ -61,6 +64,7 @@
 #'   \item `fixed`: fixed hyperparameters (nfolds, tol, maxit).
 #'   \item `seed`: RNG seed used internally.
 #'   \item `call`: original function call.
+#'   \item `km_fit`: last successfully fitted Gaussian-process surrogate (or `NULL` if unavailable).
 #' }
 #'
 #' @seealso [desurv_cv()], [desurv_cv_bo_default_bounds()]
@@ -129,6 +133,7 @@ desurv_cv_bayesopt <- function(
     nfolds = 5,
     tol = 1e-4,
     maxit = 100,
+    ntop = NULL,
     bo_bounds = desurv_cv_bo_default_bounds(),
     n_init = NULL,
     n_iter = 20,
@@ -181,6 +186,7 @@ desurv_cv_bayesopt <- function(
     nfolds = nfolds,
     tol = tol,
     maxit = maxit,
+    ntop = ntop,
     cv_only = TRUE,  # Critical: only run CV, don't refit final model
     verbose = isTRUE(cv_verbose),
     ...
@@ -193,7 +199,8 @@ desurv_cv_bayesopt <- function(
     maxit = maxit,
     engine = engine,
     method_trans_train = method_trans_train,
-    preprocess = preprocess
+    preprocess = preprocess,
+    ntop = ntop
   )
 
   # Tracking variables
@@ -201,6 +208,7 @@ desurv_cv_bayesopt <- function(
   history_rows <- list()
   unit_store <- list()
   eval_id <- 0L
+  last_km_fit <- NULL
 
   # Objective function: evaluate a single parameter configuration
   eval_point <- function(point, stage, iter) {
@@ -208,7 +216,7 @@ desurv_cv_bayesopt <- function(
     start_time <- proc.time()[3]
 
     # Combine base args with current parameter values
-    args <- c(base_args, point$values)
+    args <- .desurv_merge_args(base_args, point$values)
     result <- tryCatch(do.call(desurv_cv, args), error = function(e) e)
     elapsed <- proc.time()[3] - start_time
 
@@ -326,6 +334,7 @@ desurv_cv_bayesopt <- function(
         NULL
       }
     )
+    last_km_fit <- km_fit
 
     # Generate candidate pool for acquisition function
     candidate_units <- lhs::randomLHS(candidate_pool, d_dim)
@@ -417,7 +426,8 @@ desurv_cv_bayesopt <- function(
       bounds = bound_info,
       fixed = fixed_params,
       seed = rng_seed,
-      call = match.call()
+      call = match.call(),
+      km_fit = last_km_fit
     ),
     class = "desurv_cv_bo"
   )
@@ -452,7 +462,8 @@ desurv_cv_bo_default_bounds <- function(
     k_grid = list(lower = 2, upper = 12, type = "integer"),
     alpha_grid = list(lower = 0, upper = 0.95, type = "continuous"),
     lambda_grid = list(lower = 1e-5, upper = 1e5, scale = "log10"),
-    nu_grid = list(lower = 0, upper = 1, type = "continuous")
+    nu_grid = list(lower = 0, upper = 1, type = "continuous"),
+    ntop = list(lower = 25, upper = 100, type = "integer")
   )
 
   if (isTRUE(include_factor_penalties)) {

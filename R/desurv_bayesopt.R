@@ -32,6 +32,9 @@
 #' @param cv_verbose Logical; if `TRUE`, propagate `verbose = TRUE` into
 #'   `desurv_cv()` calls. The optimiser itself still reports progress via
 #'   `verbose`.
+#' @param ntop Optional positive integer passed to [desurv_cv()] to restrict
+#'   each factor to its top genes when scoring validation folds. Set to
+#'   `NULL` or a non-positive value to disable the filtering.
 #' @param verbose Logical; print progress after each evaluation/iteration.
 #' @param ... Additional arguments forwarded to [desurv_cv()] (for example
 #'   `seed`, `folds`, or `parallel_grid`).
@@ -50,6 +53,7 @@
 #'   \item `fixed`: fixed hyperparameters supplied through `bo_fixed`.
 #'   \item `seed`: RNG seed used internally.
 #'   \item `call`: original function call.
+#'   \item `km_fit`: last successfully fitted Gaussian-process surrogate (or `NULL` if skipped).
 #' }
 #'
 #' @seealso [desurv_cv()], [desurv_bo_default_bounds()]
@@ -96,6 +100,7 @@ desurv_bayesopt <- function(
     exploration_weight = 0,
     seed = NULL,
     cv_verbose = FALSE,
+    ntop = NULL,
     verbose = TRUE,
     ...
 ) {
@@ -134,6 +139,7 @@ desurv_bayesopt <- function(
     method_trans_train = method_trans_train,
     engine = engine,
     cv_only = TRUE,
+    ntop = ntop,
     verbose = isTRUE(cv_verbose),
     ...
   )
@@ -154,12 +160,13 @@ desurv_bayesopt <- function(
   history_rows <- list()
   unit_store <- list()
   eval_id <- 0L
+  last_km_fit <- NULL
 
   eval_point <- function(point, stage, iter) {
     eval_id <<- eval_id + 1L
     start_time <- proc.time()[3]
 
-    args <- c(base_args, fixed_args, point$values)
+    args <- .desurv_merge_args(base_args, fixed_args, point$values)
     result <- tryCatch(do.call(desurv_cv, args), error = function(e) e)
     elapsed <- proc.time()[3] - start_time
 
@@ -261,6 +268,7 @@ desurv_bayesopt <- function(
       ),
       error = function(e) NULL
     )
+    last_km_fit <- km_fit
 
     candidate_units <- lhs::randomLHS(candidate_pool, d_dim)
     colnames(candidate_units) <- bound_info$parameter
@@ -330,9 +338,10 @@ desurv_bayesopt <- function(
         mean_cindex = best_row$mean_cindex
       ),
       bounds = bound_info,
-      fixed = fixed_args,
+      fixed = c(fixed_args, list(ntop = ntop)),
       seed = rng_seed,
-      call = match.call()
+      call = match.call(),
+      km_fit = last_km_fit
     ),
     class = "desurv_bo"
   )
@@ -362,7 +371,8 @@ desurv_bo_default_bounds <- function(include_factor_penalties = TRUE) {
     nfolds = list(lower = 5, upper = 10, type = "integer"),
     ngene = list(lower = 1000, upper = 5000, type = "integer"),
     tol = list(lower = 1e-6, upper = 1e-4, scale = "log10"),
-    maxit = list(lower = 200, upper = 6000, type = "integer")
+    maxit = list(lower = 200, upper = 6000, type = "integer"),
+    ntop = list(lower = 25, upper = 100, type = "integer")
   )
   if (isTRUE(include_factor_penalties)) {
     bounds$lambdaW_grid <- list(lower = 1e-5, upper = 1e5, scale = "log10")

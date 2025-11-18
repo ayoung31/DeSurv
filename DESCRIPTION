@@ -32,6 +32,7 @@ Suggests:
     RcppArmadillo,
     ncvreg,
     DiceKriging,
-    lhs
+    lhs,
+    ggplot2
 Config/testthat/edition: 3
 VignetteBuilder: knitr

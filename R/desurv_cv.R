@@ -158,6 +158,10 @@
 #' @param ncores_grid Integer or \code{NULL}; number of cores to use when
 #'   \code{parallel_grid = TRUE}. If \code{NULL}, defaults to
 #'   \code{parallel::detectCores()} capped at the number of such jobs.
+#' @param ntop Optional positive integer specifying how many genes per factor
+#'   should be retained when computing fold-level linear predictors via
+#'   \code{desurv_get_top_genes()}. Set to \code{NULL} or a non-positive value
+#'   to disable this filtering and revert to the original predictions.
 #' @param verbose Logical; if \code{TRUE}, progress messages are printed.
 #' @param cv_only Logical; if \code{TRUE}, skip the final refit and return
 #'   the raw cross-validation object produced by the selected engine.
@@ -214,6 +218,7 @@ desurv_cv <- function(
     rule          = c("max", "1se"),
     parallel_grid = FALSE,
     ncores_grid   = NULL,
+    ntop          = NULL,
     verbose       = TRUE,
     preprocess    = FALSE,
     samp_keeps    = NULL,
@@ -245,6 +250,7 @@ desurv_cv <- function(
   d <- prepared$d
   dataset <- prepared$dataset
   preprocess_info <- prepared$preprocess_info
+  ntop <- .desurv_normalize_ntop(ntop)
 
   cv_fun <- switch(
     engine,
@@ -270,6 +276,7 @@ desurv_cv <- function(
     seed          = seed,
     tol           = tol,
     maxit         = maxit,
+    ntop          = ntop,
     parallel_grid = parallel_grid,
     ncores_grid   = ncores_grid,
     verbose       = verbose
@@ -280,12 +287,15 @@ desurv_cv <- function(
     stop("No CV summary available to select a best model.")
   }
 
+  cv_obj$ntop <- ntop
+
   if (cv_only) {
     if (!is.null(preprocess_info)) {
       cv_obj$preprocess <- preprocess_info
     }
     cv_obj$rule   <- rule
     cv_obj$engine <- engine
+    cv_obj$ntop   <- ntop
     cv_obj$call   <- call
     cv_obj$fit    <- NULL
     class(cv_obj) <- "desurv_cv"
@@ -388,6 +398,7 @@ desurv_cv <- function(
     lambdaW     = best_row$lambdaW,
     lambdaH     = best_row$lambdaH,
     alpha       = best_row$alpha,
+    ntop        = ntop,
     mean_cindex = best_row$mean_cindex,
     se_cindex   = best_row$se_cindex
   )
@@ -402,6 +413,7 @@ desurv_cv <- function(
     alpha_grid   = cv_obj$alpha_grid,
     hyper_grid   = cv_obj$hyper_grid,
     folds        = cv_obj$folds,
+    ntop         = ntop,
     call         = call
   )
   if (!is.null(preprocess_info)) {

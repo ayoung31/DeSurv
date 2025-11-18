@@ -21,6 +21,7 @@
   seed = 123,
   tol = 1e-06,
   maxit = 1000,
+  ntop = NULL,
   parallel_grid = FALSE,
   ncores_grid = NULL,
   verbose = TRUE

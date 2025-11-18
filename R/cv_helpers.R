@@ -103,3 +103,17 @@
     lambdaH_grid = lambdaH_grid
   )
 }
+
+.desurv_merge_args <- function(...) {
+  pieces <- list(...)
+  args <- do.call(c, pieces)
+  nms <- names(args)
+  if (!is.null(nms)) {
+    keep <- rep(TRUE, length(args))
+    dup <- duplicated(nms, fromLast = TRUE)
+    dup <- dup & nzchar(nms)
+    keep[dup] <- FALSE
+    args <- args[keep]
+  }
+  args
+}

@@ -16,6 +16,7 @@ desurv_cv_bayesopt(
   nfolds = 5,
   tol = 1e-04,
   maxit = 100,
+  ntop = NULL,
   bo_bounds = desurv_cv_bo_default_bounds(),
   n_init = NULL,
   n_iter = 20,
@@ -38,6 +39,10 @@ comparable across iterations, so keep these unchanged throughout the run.}
 \item{nfolds, tol, maxit}{Fixed CV/optimization parameters passed to
 \code{\link[=desurv_cv]{desurv_cv()}}. These can also be tuned via \code{bo_bounds} if desired, but
 typically you want to fix them for computational efficiency.}
+
+\item{ntop}{Optional positive integer passed to \code{\link[=desurv_cv]{desurv_cv()}} to restrict
+the validation predictor to the top genes per factor. Set to \code{NULL} or a
+non-positive value to disable this filtering.}
 
 \item{bo_bounds}{Named list describing the search space for hyperparameters
 to tune. Each entry must be either a numeric vector of length two
@@ -78,6 +83,7 @@ An object of class \code{desurv_cv_bo} containing:
 \item \code{fixed}: fixed hyperparameters (nfolds, tol, maxit).
 \item \code{seed}: RNG seed used internally.
 \item \code{call}: original function call.
+\item \code{km_fit}: last successfully fitted Gaussian-process surrogate (or \code{NULL} if unavailable).
 }
 }
 \description{

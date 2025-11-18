@@ -27,6 +27,7 @@
     seed          = 123,
     tol           = 1e-6,
     maxit         = 1000,
+    ntop          = NULL,
     parallel_grid = FALSE,
     ncores_grid   = NULL,
     verbose       = TRUE
@@ -255,7 +256,11 @@
     fits_one <- ws_res$fits[[1L]]
     for (i in seq_len(A)) {
       fit_ji <- fits_one[[i]]
-      lp_val <- predict(fit_ji, newdata = payload$X_val, type = "lp")
+      lp_val <- .desurv_lp_with_top_genes(
+        fit_ji,
+        X_new = payload$X_val,
+        ntop = ntop
+      )
 
       cindex_vals[i] <-
         if (sum(payload$d_val) == 0L) NA_real_
