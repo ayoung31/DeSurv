@@ -25,7 +25,8 @@
 #'
 #' @return A list containing:
 #' \itemize{
-#'   \item \code{W0}: consensus basis matrix (genes x factors).
+#'   \item \code{W0}: consensus basis matrix (genes x factors) with entries
+#'         floored at a small positive constant to avoid zeros.
 #'   \item \code{H0}: non-negative coefficients computed via NNLS so that
 #'         \code{W0 \%*\% H0} approximates \code{X}.
 #'   \item \code{beta0}: zero vector of length \code{k} (for convenience when
@@ -34,7 +35,9 @@
 #'   \item \code{counts}: raw co-occurrence counts.
 #'   \item \code{frequency}: per-gene selection counts (diagonal of
 #'         \code{counts}).
-#'   \item \code{clusters}: integer cluster labels used to build \code{W0}.
+#'   \item \code{clusters}: integer cluster labels used to build \code{W0};
+#'         genes that never entered any top-\code{ntop} list receive label 0
+#'         and are initialised in \code{W0} with a small positive value.
 #'   \item \code{ntop}: number of top genes used per factor.
 #'   \item \code{n_factors}: total number of short-run factors contributing to
 #'         the consensus.
@@ -129,11 +132,41 @@ desurv_consensus_seed <- function(fits,
     k <- nrow(template_W)
   }
 
+  baseline_eps <- sqrt(.Machine$double.eps)
   consensus_info <- .desurv_compute_consensus_matrix(fits, ntop, gene_names)
   consensus <- consensus_info$consensus
   counts <- consensus_info$counts
-  clusters <- .desurv_cluster_consensus(consensus, k, method = clustering)
-  W0 <- .desurv_build_W0(consensus, clusters)
+  frequency <- diag(counts)
+  active_idx <- which(frequency > 0)
+  inactive_idx <- which(frequency == 0)
+  use_pruned <- length(active_idx) && length(inactive_idx)
+
+  if (use_pruned) {
+    consensus_active <- consensus[active_idx, active_idx, drop = FALSE]
+    k_active <- min(k, nrow(consensus_active))
+    clusters_active <- .desurv_cluster_consensus(consensus_active, k_active, method = clustering)
+    W0_active <- .desurv_build_W0(consensus_active, clusters_active)
+    W0 <- matrix(
+      0,
+      nrow = nrow(consensus),
+      ncol = k,
+      dimnames = list(rownames(consensus), paste0("consensus_", seq_len(k)))
+    )
+    if (k_active > 0L) {
+      W0[active_idx, seq_len(k_active)] <- W0_active[, seq_len(k_active), drop = FALSE]
+    }
+    if (length(inactive_idx)) {
+      W0[inactive_idx, ] <- baseline_eps
+    }
+    clusters <- integer(nrow(consensus))
+    clusters[active_idx] <- clusters_active
+    clusters[inactive_idx] <- 0L
+  } else {
+    clusters <- .desurv_cluster_consensus(consensus, k, method = clustering)
+    W0 <- .desurv_build_W0(consensus, clusters)
+  }
+
+  W0 <- .desurv_floor_W0(W0, baseline_eps)
 
   X_aligned <- .desurv_align_matrix_rows(X, rownames(W0))
   H0 <- .desurv_compute_nnls_H0(W0, X_aligned)
@@ -145,7 +178,7 @@ desurv_consensus_seed <- function(fits,
     beta0 = beta0,
     consensus = consensus,
     counts = counts,
-    frequency = diag(counts),
+    frequency = frequency,
     clusters = clusters,
     ntop = ntop,
     n_factors = consensus_info$n_factors
@@ -218,10 +251,28 @@ desurv_consensus_seed <- function(fits,
     }
     W0[, j] <- as.numeric(profile)
   }
+  W0
+}
 
-  col_max <- apply(W0, 2, max)
-  col_max[col_max == 0] <- 1
-  W0 <- sweep(W0, 2, col_max, "/", check.margin = FALSE)
+.desurv_floor_W0 <- function(W0, baseline_eps) {
+  if (!length(W0)) {
+    return(W0)
+  }
+  eps_floor <- .Machine$double.eps
+  for (j in seq_len(ncol(W0))) {
+    column <- W0[, j]
+    positive <- column > 0
+    if (!any(positive)) {
+      filler <- baseline_eps
+    } else {
+      min_pos <- min(column[positive])
+      filler <- max(min_pos * 1e-6, eps_floor)
+    }
+    if (any(!positive)) {
+      column[!positive] <- filler
+    }
+    W0[, j] <- column
+  }
   W0
 }
 

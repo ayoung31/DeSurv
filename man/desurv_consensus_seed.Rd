@@ -33,7 +33,8 @@ to control the agglomerative linkage (default \code{"average"}).}
 \value{
 A list containing:
 \itemize{
-\item \code{W0}: consensus basis matrix (genes x factors).
+\item \code{W0}: consensus basis matrix (genes x factors) with entries
+floored at a small positive constant to avoid zeros.
 \item \code{H0}: non-negative coefficients computed via NNLS so that
 \code{W0 \%*\% H0} approximates \code{X}.
 \item \code{beta0}: zero vector of length \code{k} (for convenience when
@@ -42,7 +43,9 @@ seeding \code{desurv_fit()}).
 \item \code{counts}: raw co-occurrence counts.
 \item \code{frequency}: per-gene selection counts (diagonal of
 \code{counts}).
-\item \code{clusters}: integer cluster labels used to build \code{W0}.
+\item \code{clusters}: integer cluster labels used to build \code{W0};
+genes that never entered any top-\code{ntop} list receive label 0
+and are initialised in \code{W0} with a small positive value.
 \item \code{ntop}: number of top genes used per factor.
 \item \code{n_factors}: total number of short-run factors contributing to
 the consensus.
