@@ -25,6 +25,7 @@ test_that("desurv_fit produces coherent factors and predictions", {
   expect_length(fit$beta, fixture$k)
   expect_true(is.finite(fit$cindex))
   expect_true(fit$cindex >= 0 && fit$cindex <= 1)
+  expect_type(fit$convergence, "logical")
 
   risks <- predict(fit, newdata = fixture$X, type = "risk")
   expect_length(risks, fixture$n)
@@ -81,7 +82,7 @@ test_that("desurv_cv selects hyperparameters and refits", {
   expect_true(nrow(cv_obj$summary) > 0)
   expect_setequal(
     names(cv_obj$best),
-    c("k", "lambda", "nu", "lambdaW", "lambdaH", "alpha", "mean_cindex", "se_cindex")
+    c("k", "lambda", "nu", "lambdaW", "lambdaH", "alpha", "ntop", "mean_cindex", "se_cindex")
   )
   expect_true("cindex" %in% names(cv_obj$fit))
 })

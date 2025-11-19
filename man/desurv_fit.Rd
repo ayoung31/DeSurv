@@ -60,14 +60,17 @@ the \code{W} factor.}
 the \code{H} factor.}
 
 \item{W0}{Optional numeric matrix of dimension \eqn{p \times k} giving a
-user-specified initial value for \code{W}. If any of \code{W0}, \code{H0},
-or \code{beta0} are supplied, all three must be supplied.}
+user-specified initial value for \code{W}. Providing \code{W0} skips the
+internal multi-start phase.}
 
 \item{H0}{Optional numeric matrix of dimension \eqn{k \times n} giving a
-user-specified initial value for \code{H}.}
+user-specified initial value for \code{H}. When omitted (but \code{W0} is
+supplied) \code{H0} is computed internally via non-negative least squares.}
 
 \item{beta0}{Optional numeric vector of length \code{k} giving a
-user-specified initial value for the Cox coefficients \code{beta}.}
+user-specified initial value for the Cox coefficients \code{beta}.
+Defaults to a zero vector when omitted in combination with a custom
+\code{W0}.}
 
 \item{seed}{Integer or \code{NULL}; random seed used during initialization
 (for the short runs when \code{W0, H0, beta0} are not provided).}
@@ -113,6 +116,9 @@ An object of class \code{"desurv_fit"} with components including:
 \item \code{cindex_init}: C-index of the best short initialization
 (if multi-start was used), or \code{NA} when user-specified
 initialization is provided.
+\item \code{convergence}: logical flag indicating whether the final
+optimization satisfied the stopping criterion before exhausting
+\code{maxit}.
 \item \code{data}: the underlying \code{"desurv_data"} object used for
 fitting.
 \item \code{hyper}: list of hyperparameters actually used after
@@ -152,12 +158,14 @@ The best partial fit is selected by concordance index (C-index),
 and a single full optimization is then performed from that
 initialization using \code{maxit} iterations and tolerance
 \code{tol}.
-\item If the user supplies \code{W0}, \code{H0}, and \code{beta0}, these
-are used directly as the starting point for a single full
-optimization with \code{maxit} iterations and tolerance \code{tol};
-in this case, \code{tol_init}, \code{imaxit}, \code{ninit},
-\code{parallel_init}, and \code{ncores_init} are
-\strong{ignored}.
+\item If the user supplies \code{W0} (with optional \code{H0} and
+\code{beta0}), these are used directly as the starting point for a
+single full optimization with \code{maxit} iterations and tolerance
+\code{tol}; in this case, \code{tol_init}, \code{imaxit},
+\code{ninit}, \code{parallel_init}, and \code{ncores_init} are
+\strong{ignored}. When \code{H0} is omitted it is derived from
+\code{W0} and the training matrix via non-negative least squares,
+and \code{beta0} defaults to a zero vector.
 }
 
 The function accepts either raw inputs \code{X, y, d, k} or a pre-constructed

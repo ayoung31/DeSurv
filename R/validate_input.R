@@ -159,35 +159,48 @@ print.desurv_data <- function(x, ...) {
 }
 
 .validate_desurv_custom_init <- function(X, k, W0, H0, beta0) {
-  if (is.null(W0) || is.null(H0) || is.null(beta0)) {
-    stop("If providing custom initialization, W0, H0, and beta0 must all be supplied.")
+  if (is.null(W0)) {
+    stop("`W0` must be supplied when providing custom initialization.", call. = FALSE)
   }
 
   W0 <- as.matrix(W0)
-  H0 <- as.matrix(H0)
-  beta0 <- as.numeric(beta0)
-
-  if (!is.numeric(W0) || !is.numeric(H0) || !is.numeric(beta0)) {
-    stop("W0, H0, and beta0 must be numeric.")
+  if (!is.numeric(W0)) {
+    stop("`W0` must be numeric.", call. = FALSE)
   }
-
-  if (anyNA(W0) || anyNA(H0) || anyNA(beta0) ||
-      !all(is.finite(W0)) || !all(is.finite(H0)) || !all(is.finite(beta0))) {
-    stop("W0, H0, and beta0 cannot contain NA, NaN, or Inf.")
+  if (anyNA(W0) || !all(is.finite(W0))) {
+    stop("`W0` cannot contain NA, NaN, or Inf.", call. = FALSE)
+  }
+  if (any(W0 < 0)) {
+    stop("`W0` must be non-negative.", call. = FALSE)
   }
 
   p <- nrow(X)
   n <- ncol(X)
-
   if (nrow(W0) != p) stop("nrow(W0) must equal nrow(X).")
   if (ncol(W0) != k) stop("ncol(W0) must equal k.")
+
+  if (is.null(H0)) {
+    H0 <- .desurv_compute_nnls_H0(W0, X)
+  } else {
+    H0 <- as.matrix(H0)
+    if (!is.numeric(H0)) stop("`H0` must be numeric.")
+    if (anyNA(H0) || !all(is.finite(H0))) {
+      stop("`H0` cannot contain NA, NaN, or Inf.")
+    }
+    if (any(H0 < 0)) stop("`H0` must be non-negative.")
+  }
+
   if (nrow(H0) != k) stop("nrow(H0) must equal k.")
   if (ncol(H0) != n) stop("ncol(H0) must equal ncol(X).")
-  if (length(beta0) != k) stop("length(beta0) must equal k.")
 
-  # For NMF-style factors, typically non-negative:
-  if (any(W0 < 0) || any(H0 < 0)) {
-    stop("W0 and H0 must be non-negative for NMF-based methods.")
+  if (is.null(beta0)) {
+    beta0 <- rep(0, k)
+  } else {
+    beta0 <- as.numeric(beta0)
+    if (length(beta0) != k) stop("length(beta0) must equal k.")
+    if (anyNA(beta0) || !all(is.finite(beta0))) {
+      stop("`beta0` cannot contain NA, NaN, or Inf.")
+    }
   }
 
   list(W0 = W0, H0 = H0, beta0 = beta0)
