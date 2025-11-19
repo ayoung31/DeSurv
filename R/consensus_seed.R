@@ -69,8 +69,31 @@ desurv_consensus_seed <- function(fits,
   }
   gene_names <- rownames(template_W)
   if (is.null(gene_names)) {
+    gene_names <- rownames(X)
+  }
+  if (is.null(gene_names)) {
     gene_names <- paste0("gene_", seq_len(nrow(template_W)))
   }
+  if (length(gene_names) != nrow(template_W)) {
+    stop("Gene naming failed because nrow(W) does not match the gene name vector.", call. = FALSE)
+  }
+  assign_gene_names <- function(W_mat) {
+    if (is.null(W_mat) || !is.matrix(W_mat)) {
+      stop("Each fit must store a numeric `W` matrix.", call. = FALSE)
+    }
+    if (nrow(W_mat) != length(gene_names)) {
+      stop("All fits must have compatible gene dimensions.", call. = FALSE)
+    }
+    if (is.null(rownames(W_mat))) {
+      rownames(W_mat) <- gene_names
+    }
+    W_mat
+  }
+  fits <- lapply(fits, function(fit) {
+    fit$W <- assign_gene_names(fit$W)
+    fit
+  })
+  template_W <- fits[[1]]$W
   # ensure all fits share the same row order so that integer indices align
   same_layout <- vapply(
     fits,

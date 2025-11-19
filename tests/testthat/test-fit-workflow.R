@@ -23,6 +23,8 @@ test_that("desurv_fit produces coherent factors and predictions", {
   expect_equal(dim(fit$W), c(fixture$p, fixture$k))
   expect_equal(dim(fit$H), c(fixture$k, fixture$n))
   expect_length(fit$beta, fixture$k)
+  expect_false(is.null(rownames(fit$W)))
+  expect_equal(rownames(fit$W), rownames(fixture$X))
   expect_true(is.finite(fit$cindex))
   expect_true(fit$cindex >= 0 && fit$cindex <= 1)
   expect_type(fit$convergence, "logical")
@@ -268,11 +270,8 @@ test_that("predict.desurv_fit enforces gene alignment and rowname requirements",
     fixed = FALSE
   )
 
-  unlabelled <- shuffled
+  unlabelled <- fixture$X
   rownames(unlabelled) <- NULL
-  expect_error(
-    predict(fit, newdata = unlabelled),
-    "rownames",
-    fixed = FALSE
-  )
+  preds_unlabelled <- predict(fit, newdata = unlabelled, type = "lp")
+  expect_equal(preds_unlabelled, preds_ref, tolerance = 1e-12)
 })

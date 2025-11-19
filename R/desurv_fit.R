@@ -200,6 +200,25 @@ desurv_fit <- function(
   # Build or reuse desurv_data object
   data <- .as_desurv_data(X, y = y, d = d, k = k)
 
+  gene_names <- rownames(data$X)
+  if (is.null(gene_names)) {
+    gene_names <- paste0("gene_", seq_len(nrow(data$X)))
+    rownames(data$X) <- gene_names
+  }
+  attach_gene_names <- function(mat) {
+    if (is.null(mat)) {
+      return(mat)
+    }
+    mat <- as.matrix(mat)
+    if (nrow(mat) != length(gene_names)) {
+      stop("Internal error: gene dimension mismatch in initialization.", call. = FALSE)
+    }
+    if (is.null(rownames(mat))) {
+      rownames(mat) <- gene_names
+    }
+    mat
+  }
+
   # Validate hyperparameters (alpha, lambda, nu, lambdaW, lambdaH, tol, maxit, verbose)
   hp <- .validate_desurv_hyperparams(
     alpha, lambda, nu, lambdaW, lambdaH,
@@ -220,7 +239,7 @@ desurv_fit <- function(
 
   if (use_custom_init) {
     init_par <- .validate_desurv_custom_init(data$X, data$k, W0, H0, beta0)
-    best_W   <- init_par$W0
+    best_W   <- attach_gene_names(init_par$W0)
     best_H   <- init_par$H0
     best_beta <- init_par$beta0
     cindex_init <- NA_real_
@@ -249,6 +268,8 @@ desurv_fit <- function(
     best_H      <- init_res$H0
     best_beta   <- init_res$beta0
     cindex_init <- init_res$cindex_init
+
+    best_W <- attach_gene_names(best_W)
   }
 
   # Optional: reseed before full run (only for auto-init path)
@@ -264,6 +285,8 @@ desurv_fit <- function(
     hp$lambdaW, hp$lambdaH,
     hp$tol, hp$maxit, verbose
   )
+
+  fit_full$W <- attach_gene_names(fit_full$W)
 
   Z_full  <- t(data$X) %*% fit_full$W
   lp_full <- drop(Z_full %*% fit_full$beta)

@@ -56,7 +56,10 @@ coef.desurv_fit <- function(object, ...) {
   train_genes <- rownames(template)
   if (!is.null(train_genes)) {
     if (is.null(rownames(X))) {
-      stop("`newdata` must have rownames matching the training features.")
+      if (nrow(X) != length(train_genes)) {
+        stop("`newdata` must have rownames matching the training features.", call. = FALSE)
+      }
+      rownames(X) <- train_genes
     }
     missing_genes <- setdiff(train_genes, rownames(X))
     if (length(missing_genes)) {

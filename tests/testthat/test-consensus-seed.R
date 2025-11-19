@@ -39,6 +39,39 @@ test_that("desurv_consensus_seed builds consensus W0/H0", {
   expect_true(consensus$n_factors > 0)
 })
 
+test_that("desurv_consensus_seed falls back to X rownames when fits are unnamed", {
+  fixture <- make_fixture_dataset(p = 5, n = 8, k = 2)
+
+  build_fit <- function(scale_vec) {
+    W <- cbind(scale_vec, rev(scale_vec))
+    rownames(W) <- NULL
+    structure(
+      list(
+        W = W,
+        H = matrix(runif(fixture$k * fixture$n), nrow = fixture$k),
+        beta = runif(fixture$k),
+        cindex = runif(1)
+      ),
+      class = "desurv_fit"
+    )
+  }
+
+  fits <- list(
+    build_fit(c(3, 2, 4, 1, 0.2)),
+    build_fit(c(4, 1, 3, 2, 0.1))
+  )
+
+  consensus <- desurv_consensus_seed(
+    fits = fits,
+    X = fixture$X,
+    ntop = 2,
+    clustering = "complete"
+  )
+
+  expect_equal(rownames(consensus$W0), rownames(fixture$X))
+  expect_false(any(is.na(consensus$clusters)))
+})
+
 test_that("custom initialization infers H0 via NNLS when omitted", {
   fixture <- make_fixture_dataset(p = 5, n = 6, k = 2)
   W0 <- matrix(runif(fixture$p * fixture$k, min = 0, max = 2),
