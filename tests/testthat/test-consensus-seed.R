@@ -136,3 +136,108 @@ test_that("desurv_consensus_seed ignores zero-frequency genes when clustering", 
   expect_equal(ncol(consensus$W0), fixture$k)
   expect_true(all(rowSums(consensus$W0[active_genes, , drop = FALSE]) > 0))
 })
+
+test_that("consensus similarity rescales co-occurrences via Jaccard", {
+  fixture <- make_fixture_dataset(p = 5, n = 8, k = 2)
+  gene_names <- paste0("gene", seq_len(fixture$p))
+
+  build_fit_from_pattern <- function(pattern) {
+    W <- matrix(1e-4, nrow = fixture$p, ncol = fixture$k,
+                dimnames = list(gene_names, paste0("factor", seq_len(fixture$k))))
+    for (f_idx in seq_len(fixture$k)) {
+      genes <- pattern[[f_idx]]
+      if (!length(genes)) {
+        next
+      }
+      weights <- seq(length(genes), 1)
+      W[genes, f_idx] <- weights + 5
+    }
+    structure(
+      list(
+        W = W,
+        H = matrix(runif(fixture$k * fixture$n), nrow = fixture$k),
+        beta = runif(fixture$k),
+        cindex = runif(1)
+      ),
+      class = "desurv_fit"
+    )
+  }
+
+  patterns <- list(
+    list(c(1, 2), c(3, 4)),
+    list(c(1, 2), c(3, 4)),
+    list(c(1, 3), c(2, 4)),
+    list(c(1, 2), c(3, 4))
+  )
+  fits <- lapply(patterns, build_fit_from_pattern)
+
+  consensus <- desurv_consensus_seed(
+    fits = fits,
+    X = fixture$X,
+    ntop = 2
+  )
+
+  counts <- consensus$counts
+  frequency <- consensus$frequency
+  expected_jaccard <- unname(counts["gene1", "gene2"] /
+    (frequency["gene1"] + frequency["gene2"] - counts["gene1", "gene2"]))
+
+  expect_equal(unname(consensus$consensus["gene1", "gene2"]), expected_jaccard)
+  expect_equal(consensus$consensus["gene1", "gene1"], 1)
+  expect_equal(consensus$consensus["gene2", "gene2"], 1)
+})
+
+test_that("min_frequency threshold drops low-support genes", {
+  fixture <- make_fixture_dataset(p = 5, n = 10, k = 2)
+  gene_names <- paste0("gene", seq_len(fixture$p))
+
+  build_fit <- function(pattern) {
+    W <- matrix(1e-4, nrow = fixture$p, ncol = fixture$k,
+                dimnames = list(gene_names, paste0("factor", seq_len(fixture$k))))
+    for (f_idx in seq_len(fixture$k)) {
+      genes <- pattern[[f_idx]]
+      if (!length(genes)) {
+        next
+      }
+      weights <- seq(length(genes), 1)
+      W[genes, f_idx] <- weights + 5
+    }
+    structure(
+      list(
+        W = W,
+        H = matrix(runif(fixture$k * fixture$n), nrow = fixture$k),
+        beta = runif(fixture$k),
+        cindex = runif(1)
+      ),
+      class = "desurv_fit"
+    )
+  }
+
+  # gene4 appears only once across all top lists when ntop = 2
+  patterns <- list(
+    list(c(1, 2), c(3, 4)),
+    list(c(1, 2), c(3, 5)),
+    list(c(1, 3), c(2, 5))
+  )
+  fits <- lapply(patterns, build_fit)
+
+  strict <- desurv_consensus_seed(
+    fits = fits,
+    X = fixture$X,
+    ntop = 2,
+    min_frequency = 2
+  )
+  expect_equal(strict$min_frequency, 2)
+  gene4_idx <- match("gene4", rownames(strict$W0))
+  expect_false(is.na(gene4_idx))
+  expect_equal(strict$clusters[gene4_idx], 0)
+
+  relaxed <- desurv_consensus_seed(
+    fits = fits,
+    X = fixture$X,
+    ntop = 2,
+    min_frequency = 1
+  )
+  expect_equal(relaxed$min_frequency, 1)
+  expect_true(relaxed$clusters[gene4_idx] != 0)
+})

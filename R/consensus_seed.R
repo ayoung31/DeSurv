@@ -22,6 +22,10 @@
 #'   Defaults to the number of columns in the first fit's \code{W}.
 #' @param clustering Character string passed to \code{\link[stats]{hclust}}
 #'   to control the agglomerative linkage (default \code{"average"}).
+#' @param min_frequency Optional integer specifying the minimum number of times a
+#'   gene must appear across the collected top-\code{ntop} lists to be clustered
+#'   when building the consensus \eqn{W_0}. Defaults to 2 when multiple fits are
+#'   supplied and 1 when only a single fit is provided.
 #'
 #' @return A list containing:
 #' \itemize{
@@ -31,7 +35,8 @@
 #'         \code{W0 \%*\% H0} approximates \code{X}.
 #'   \item \code{beta0}: zero vector of length \code{k} (for convenience when
 #'         seeding \code{desurv_fit()}).
-#'   \item \code{consensus}: normalised gene co-occurrence matrix.
+#'   \item \code{consensus}: gene co-occurrence matrix normalised via the
+#'         Jaccard index to emphasise stable gene pairings across fits.
 #'   \item \code{counts}: raw co-occurrence counts.
 #'   \item \code{frequency}: per-gene selection counts (diagonal of
 #'         \code{counts}).
@@ -41,6 +46,8 @@
 #'   \item \code{ntop}: number of top genes used per factor.
 #'   \item \code{n_factors}: total number of short-run factors contributing to
 #'         the consensus.
+#'   \item \code{min_frequency}: frequency threshold used to determine which
+#'         genes entered the clustering stage.
 #' }
 #'
 #' @importFrom stats as.dist cutree hclust
@@ -49,7 +56,8 @@ desurv_consensus_seed <- function(fits,
                                   X,
                                   ntop,
                                   k = NULL,
-                                  clustering = c("average", "complete", "single")) {
+                                  clustering = c("average", "complete", "single"),
+                                  min_frequency = NULL) {
   if (inherits(fits, "desurv_fit")) {
     fits <- list(fits)
   }
@@ -64,6 +72,15 @@ desurv_consensus_seed <- function(fits,
   ntop <- as.integer(ntop)
   if (length(ntop) != 1L || is.na(ntop) || ntop <= 0L) {
     stop("`ntop` must be a positive integer.", call. = FALSE)
+  }
+
+  if (is.null(min_frequency)) {
+    min_frequency <- if (length(fits) > 1L) 2L else 1L
+  } else {
+    min_frequency <- as.integer(min_frequency)
+    if (length(min_frequency) != 1L || is.na(min_frequency) || min_frequency <= 0L) {
+      stop("`min_frequency` must be NULL or a positive integer.", call. = FALSE)
+    }
   }
 
   template_W <- fits[[1]]$W
@@ -136,12 +153,21 @@ desurv_consensus_seed <- function(fits,
   consensus_info <- .desurv_compute_consensus_matrix(fits, ntop, gene_names)
   consensus <- consensus_info$consensus
   counts <- consensus_info$counts
-  frequency <- diag(counts)
-  active_idx <- which(frequency > 0)
-  inactive_idx <- which(frequency == 0)
+  frequency <- consensus_info$frequency
+  active_idx <- which(frequency >= min_frequency)
+  inactive_idx <- setdiff(seq_along(frequency), active_idx)
   use_pruned <- length(active_idx) && length(inactive_idx)
 
-  if (use_pruned) {
+  if (!length(active_idx)) {
+    warning("No genes met the `min_frequency` threshold; filling W0 with the baseline epsilon.", call. = FALSE)
+    W0 <- matrix(
+      baseline_eps,
+      nrow = nrow(consensus),
+      ncol = k,
+      dimnames = list(rownames(consensus), paste0("consensus_", seq_len(k)))
+    )
+    clusters <- integer(nrow(consensus))
+  } else if (use_pruned) {
     consensus_active <- consensus[active_idx, active_idx, drop = FALSE]
     k_active <- min(k, nrow(consensus_active))
     clusters_active <- .desurv_cluster_consensus(consensus_active, k_active, method = clustering)
@@ -164,6 +190,10 @@ desurv_consensus_seed <- function(fits,
   } else {
     clusters <- .desurv_cluster_consensus(consensus, k, method = clustering)
     W0 <- .desurv_build_W0(consensus, clusters)
+    if (length(inactive_idx)) {
+      clusters[inactive_idx] <- 0L
+      W0[inactive_idx, ] <- baseline_eps
+    }
   }
 
   W0 <- .desurv_floor_W0(W0, baseline_eps)
@@ -181,7 +211,8 @@ desurv_consensus_seed <- function(fits,
     frequency = frequency,
     clusters = clusters,
     ntop = ntop,
-    n_factors = consensus_info$n_factors
+    n_factors = consensus_info$n_factors,
+    min_frequency = min_frequency
   )
 }
 
@@ -209,8 +240,18 @@ desurv_consensus_seed <- function(fits,
     stop("Failed to collect any top genes from the supplied fits.", call. = FALSE)
   }
 
-  consensus <- counts / total_sets
-  list(consensus = consensus, counts = counts, n_factors = total_sets)
+  frequency <- diag(counts)
+  consensus <- matrix(0, nrow = p, ncol = p,
+                      dimnames = list(gene_names, gene_names))
+  if (any(frequency > 0)) {
+    union_counts <- outer(frequency, frequency, "+") - counts
+    valid_union <- union_counts > 0 & counts > 0
+    consensus[valid_union] <- counts[valid_union] / union_counts[valid_union]
+    diag_vals <- rep(0, length(frequency))
+    diag_vals[frequency > 0] <- 1
+    diag(consensus) <- diag_vals
+  }
+  list(consensus = consensus, counts = counts, frequency = frequency, n_factors = total_sets)
 }
 
 .desurv_cluster_consensus <- function(consensus, k, method = "average") {

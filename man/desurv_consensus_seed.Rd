@@ -9,7 +9,8 @@ desurv_consensus_seed(
   X,
   ntop,
   k = NULL,
-  clustering = c("average", "complete", "single")
+  clustering = c("average", "complete", "single"),
+  min_frequency = NULL
 )
 }
 \arguments{
@@ -29,6 +30,11 @@ Defaults to the number of columns in the first fit's \code{W}.}
 
 \item{clustering}{Character string passed to \code{\link[stats]{hclust}}
 to control the agglomerative linkage (default \code{"average"}).}
+
+\item{min_frequency}{Optional integer specifying the minimum number of times a
+gene must appear across the collected top-\code{ntop} lists to be clustered
+when building the consensus \eqn{W_0}. Defaults to 2 when multiple fits are
+supplied and 1 when only a single fit is provided.}
 }
 \value{
 A list containing:
@@ -39,7 +45,8 @@ floored at a small positive constant to avoid zeros.
 \code{W0 \%*\% H0} approximates \code{X}.
 \item \code{beta0}: zero vector of length \code{k} (for convenience when
 seeding \code{desurv_fit()}).
-\item \code{consensus}: normalised gene co-occurrence matrix.
+\item \code{consensus}: gene co-occurrence matrix normalised via the
+Jaccard index to emphasise stable gene pairings across fits.
 \item \code{counts}: raw co-occurrence counts.
 \item \code{frequency}: per-gene selection counts (diagonal of
 \code{counts}).
@@ -49,6 +56,8 @@ and are initialised in \code{W0} with a small positive value.
 \item \code{ntop}: number of top genes used per factor.
 \item \code{n_factors}: total number of short-run factors contributing to
 the consensus.
+\item \code{min_frequency}: frequency threshold used to determine which
+genes entered the clustering stage.
 }
 }
 \description{
