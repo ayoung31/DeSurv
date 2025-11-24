@@ -25,6 +25,14 @@
 #'   optional `type = "continuous"`/`"integer"` plus
 #'   `scale = "linear"`/`"log10"`. See [desurv_cv_bo_default_bounds()] for
 #'   recommended ranges.
+#' @param bo_fixed Named list of scalar arguments passed directly to
+#'   [desurv_cv()] for every evaluation (e.g., to freeze `lambdaW_grid` or
+#'   `lambdaH_grid`). Entries in `bo_bounds` override `bo_fixed` when both name
+#'   the same parameter.
+#' @param bo_history Optional object returned by [desurv_cv_bayesopt()],
+#'   [desurv_bayesopt()], or a data frame of previous evaluations to warm-start
+#'   the optimisation. Only rows whose parameters fall inside the new
+#'   `bo_bounds` are imported.
 #' @param n_init Number of Latin-hypercube evaluations before fitting the GP.
 #'   Defaults to `max(5, 3 * length(bo_bounds))`.
 #' @param n_iter Number of sequential BO iterations after the initial design.
@@ -135,6 +143,8 @@ desurv_cv_bayesopt <- function(
     maxit = 100,
     ntop = NULL,
     bo_bounds = desurv_cv_bo_default_bounds(),
+    bo_fixed = list(),
+    bo_history = NULL,
     n_init = NULL,
     n_iter = 20,
     candidate_pool = NULL,
@@ -193,6 +203,7 @@ desurv_cv_bayesopt <- function(
   )
 
   # Store fixed parameters for reporting
+  bo_fixed <- bo_fixed[!vapply(bo_fixed, is.null, logical(1))]
   fixed_params <- list(
     nfolds = nfolds,
     tol = tol,
@@ -203,12 +214,32 @@ desurv_cv_bayesopt <- function(
     ntop = ntop
   )
 
-  # Tracking variables
-  existing_keys <- character()
-  history_rows <- list()
-  unit_store <- list()
-  eval_id <- 0L
+  if (length(bo_fixed)) {
+    fixed_params <- c(fixed_params, bo_fixed)
+  }
+
+  warmstart <- .desurv_bo_prepare_history(bo_history, bound_info)
+  existing_keys <- warmstart$existing_keys
+  history_rows <- warmstart$history_rows
+  unit_store <- warmstart$unit_store
+  eval_id <- warmstart$last_eval_id
   last_km_fit <- NULL
+
+  if (!is.null(bo_history) && isTRUE(verbose)) {
+    if (warmstart$n_loaded > 0L) {
+      msg <- sprintf(
+        "Warm-started Bayesian optimisation with %d previous evaluation%s",
+        warmstart$n_loaded,
+        if (warmstart$n_loaded == 1L) "" else "s"
+      )
+      if (warmstart$n_discarded > 0L) {
+        msg <- paste0(msg, sprintf(" (discarded %d outside the new bounds)", warmstart$n_discarded))
+      }
+      message(msg, ".")
+    } else if (warmstart$n_discarded > 0L) {
+      message("Discarded ", warmstart$n_discarded, " prior evaluations that were incompatible with the new bounds.")
+    }
+  }
 
   # Objective function: evaluate a single parameter configuration
   eval_point <- function(point, stage, iter) {
@@ -216,7 +247,7 @@ desurv_cv_bayesopt <- function(
     start_time <- proc.time()[3]
 
     # Combine base args with current parameter values
-    args <- .desurv_merge_args(base_args, point$values)
+    args <- .desurv_merge_args(base_args, bo_fixed, point$values)
     result <- tryCatch(do.call(desurv_cv, args), error = function(e) e)
     elapsed <- proc.time()[3] - start_time
 
@@ -253,6 +284,7 @@ desurv_cv_bayesopt <- function(
         stringsAsFactors = FALSE
       )
     )
+    row <- as.data.frame(row, stringsAsFactors = FALSE)
     history_rows[[length(history_rows) + 1L]] <<- row
 
     # Print progress
@@ -395,6 +427,7 @@ desurv_cv_bayesopt <- function(
 
   # Extract best result
   history_df <- do.call(rbind, history_rows)
+  rownames(history_df) <- NULL
   ok <- history_df$status == "ok" & !is.na(history_df$mean_cindex)
   if (!any(ok)) {
     stop("Bayesian optimisation failed: no successful desurv_cv() evaluations.", call. = FALSE)

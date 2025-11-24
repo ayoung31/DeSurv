@@ -18,6 +18,8 @@ desurv_cv_bayesopt(
   maxit = 100,
   ntop = NULL,
   bo_bounds = desurv_cv_bo_default_bounds(),
+  bo_fixed = list(),
+  bo_history = NULL,
   n_init = NULL,
   n_iter = 20,
   candidate_pool = NULL,
@@ -50,6 +52,16 @@ to tune. Each entry must be either a numeric vector of length two
 optional \code{type = "continuous"}/\code{"integer"} plus
 \code{scale = "linear"}/\code{"log10"}. See \code{\link[=desurv_cv_bo_default_bounds]{desurv_cv_bo_default_bounds()}} for
 recommended ranges.}
+
+\item{bo_fixed}{Named list of scalar arguments passed directly to
+\code{\link[=desurv_cv]{desurv_cv()}} for every evaluation (e.g., to freeze \code{lambdaW_grid} or
+\code{lambdaH_grid}). Entries in \code{bo_bounds} override \code{bo_fixed} when both name
+the same parameter.}
+
+\item{bo_history}{Optional object returned by \code{\link[=desurv_cv_bayesopt]{desurv_cv_bayesopt()}},
+\code{\link[=desurv_bayesopt]{desurv_bayesopt()}}, or a data frame of previous evaluations to warm-start
+the optimisation. Only rows whose parameters fall inside the new
+\code{bo_bounds} are imported.}
 
 \item{n_init}{Number of Latin-hypercube evaluations before fitting the GP.
 Defaults to \code{max(5, 3 * length(bo_bounds))}.}

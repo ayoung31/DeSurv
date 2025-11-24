@@ -21,6 +21,10 @@
 #' @param bo_fixed Named list of scalar arguments that should remain constant
 #'   during optimisation (e.g., `lambdaW_grid = 0`, `lambdaH_grid = 0`,
 #'   `nfolds = 5`). These override the defaults used in the optimiser.
+#' @param bo_history Optional object returned by [desurv_bayesopt()] or
+#'   [desurv_cv_bayesopt()] (or a compatible evaluation history data frame)
+#'   used to warm-start a new optimisation run. Only evaluations that fall
+#'   inside the current `bo_bounds` are imported.
 #' @param n_init Number of Latin-hypercube evaluations before fitting the GP.
 #'   Defaults to `max(5, 3 * length(bo_bounds))`.
 #' @param n_iter Number of sequential BO iterations after the initial design.
@@ -94,6 +98,7 @@ desurv_bayesopt <- function(
     engine = c("cold", "warmstart"),
     bo_bounds = desurv_bo_default_bounds(),
     bo_fixed = list(),
+    bo_history = NULL,
     n_init = NULL,
     n_iter = 20,
     candidate_pool = NULL,
@@ -156,11 +161,28 @@ desurv_bayesopt <- function(
   defaults_fixed <- defaults_fixed[!vapply(defaults_fixed, is.null, logical(1))]
   fixed_args <- utils::modifyList(defaults_fixed, bo_fixed, keep.null = TRUE)
 
-  existing_keys <- character()
-  history_rows <- list()
-  unit_store <- list()
-  eval_id <- 0L
+  warmstart <- .desurv_bo_prepare_history(bo_history, bound_info)
+  existing_keys <- warmstart$existing_keys
+  history_rows <- warmstart$history_rows
+  unit_store <- warmstart$unit_store
+  eval_id <- warmstart$last_eval_id
   last_km_fit <- NULL
+
+  if (!is.null(bo_history) && isTRUE(verbose)) {
+    if (warmstart$n_loaded > 0L) {
+      msg <- sprintf(
+        "Warm-started Bayesian optimisation with %d previous evaluation%s",
+        warmstart$n_loaded,
+        if (warmstart$n_loaded == 1L) "" else "s"
+      )
+      if (warmstart$n_discarded > 0L) {
+        msg <- paste0(msg, sprintf(" (discarded %d outside the new bounds)", warmstart$n_discarded))
+      }
+      message(msg, ".")
+    } else if (warmstart$n_discarded > 0L) {
+      message("Discarded ", warmstart$n_discarded, " prior evaluations that were incompatible with the new bounds.")
+    }
+  }
 
   eval_point <- function(point, stage, iter) {
     eval_id <<- eval_id + 1L
@@ -200,6 +222,7 @@ desurv_bayesopt <- function(
         stringsAsFactors = FALSE
       )
     )
+    row <- as.data.frame(row, stringsAsFactors = FALSE)
     history_rows[[length(history_rows) + 1L]] <<- row
 
     if (verbose) {
@@ -318,6 +341,7 @@ desurv_bayesopt <- function(
   }
 
   history_df <- do.call(rbind, history_rows)
+  rownames(history_df) <- NULL
   ok <- history_df$status == "ok" & !is.na(history_df$mean_cindex)
   if (!any(ok)) {
     stop("Bayesian optimisation failed: no successful desurv_cv() evaluations.", call. = FALSE)
@@ -468,6 +492,197 @@ print.desurv_bo <- function(x, ...) {
   list(
     unit = unit_vec,
     values = as.list(values),
-    key = paste(sprintf("%s=%s", names(values), signif(values, 8)), collapse = "|")
+    key = .desurv_bo_make_key(values)
   )
+}
+
+.desurv_bo_make_key <- function(values) {
+  if (!length(values)) {
+    return("")
+  }
+  vals <- vapply(values, .desurv_bo_as_numeric, numeric(1))
+  names(vals) <- names(values)
+  paste(
+    sprintf("%s=%s", names(vals), signif(vals, 8)),
+    collapse = "|"
+  )
+}
+
+.desurv_bo_values_to_unit <- function(values, info) {
+  if (!length(values)) {
+    return(numeric())
+  }
+  params <- info$parameter
+  if (!all(params %in% names(values))) {
+    missing <- setdiff(params, names(values))
+    stop("`values` is missing: ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  ordered <- vapply(values[params], .desurv_bo_as_numeric, numeric(1))
+  names(ordered) <- params
+  eps <- sqrt(.Machine$double.eps)
+  units <- vapply(
+    seq_along(ordered),
+    function(i) {
+      val <- ordered[i]
+      lower <- info$lower[i]
+      upper <- info$upper[i]
+      scale <- info$scale[i]
+      if (!is.finite(val)) {
+        return(NA_real_)
+      }
+      tol_lower <- lower - eps * max(1, abs(lower))
+      tol_upper <- upper + eps * max(1, abs(upper))
+      if (val < tol_lower || val > tol_upper) {
+        return(NA_real_)
+      }
+      val <- min(max(val, lower), upper)
+      if (identical(scale, "log10")) {
+        if (val <= 0 || lower <= 0 || upper <= 0) {
+          return(NA_real_)
+        }
+        log_lower <- log10(lower)
+        log_upper <- log10(upper)
+        if (log_upper == log_lower) {
+          u <- 0
+        } else {
+          u <- (log10(val) - log_lower) / (log_upper - log_lower)
+        }
+      } else if (upper == lower) {
+        u <- 0
+      } else {
+        u <- (val - lower) / (upper - lower)
+      }
+      min(max(u, 0), 1)
+    },
+    numeric(1)
+  )
+  names(units) <- params
+  units
+}
+
+.desurv_bo_as_numeric <- function(x) {
+  if (is.list(x)) {
+    x <- unlist(x, use.names = FALSE)
+  }
+  if (is.factor(x)) {
+    x <- as.character(x)
+  }
+  suppressWarnings(as.numeric(x))
+}
+
+.desurv_bo_as_character <- function(x) {
+  if (is.factor(x)) {
+    as.character(x)
+  } else {
+    as.character(x)
+  }
+}
+
+.desurv_bo_prepare_history <- function(bo_history, bound_info) {
+  empty <- list(
+    history_rows = list(),
+    unit_store = list(),
+    existing_keys = character(),
+    last_eval_id = 0L,
+    n_loaded = 0L,
+    n_discarded = 0L
+  )
+  if (is.null(bo_history)) {
+    return(empty)
+  }
+
+  history_df <- NULL
+  if (inherits(bo_history, c("desurv_bo", "desurv_cv_bo"))) {
+    history_df <- bo_history$history
+  } else if (is.list(bo_history) && !is.null(bo_history$history)) {
+    history_df <- bo_history$history
+  } else if (is.data.frame(bo_history)) {
+    history_df <- bo_history
+  } else {
+    stop("`bo_history` must be NULL, a previous desurv_*_bayesopt() result, or a data frame.",
+         call. = FALSE)
+  }
+
+  if (is.null(history_df) || !nrow(history_df)) {
+    return(empty)
+  }
+  history_df <- as.data.frame(history_df, stringsAsFactors = FALSE)
+
+  params <- bound_info$parameter
+  missing_cols <- setdiff(params, names(history_df))
+  if (length(missing_cols)) {
+    stop("`bo_history` is missing required parameter columns: ",
+         paste(missing_cols, collapse = ", "),
+         call. = FALSE)
+  }
+
+  n <- nrow(history_df)
+  to_numeric <- .desurv_bo_as_numeric
+  stage_vec <- if ("stage" %in% names(history_df)) .desurv_bo_as_character(history_df$stage) else rep("warmstart", n)
+  iter_vec <- if ("iteration" %in% names(history_df)) {
+    iter_vals <- to_numeric(history_df$iteration)
+    as.integer(round(iter_vals))
+  } else {
+    rep(0L, n)
+  }
+  mean_vec <- if ("mean_cindex" %in% names(history_df)) to_numeric(history_df$mean_cindex) else rep(NA_real_, n)
+  status_vec <- if ("status" %in% names(history_df)) .desurv_bo_as_character(history_df$status) else rep("ok", n)
+  message_vec <- if ("message" %in% names(history_df)) .desurv_bo_as_character(history_df$message) else rep(NA_character_, n)
+  elapsed_vec <- if ("elapsed" %in% names(history_df)) to_numeric(history_df$elapsed) else rep(NA_real_, n)
+
+  history_rows <- list()
+  unit_store <- list()
+  existing_keys <- character()
+  eval_id <- 0L
+
+  for (i in seq_len(n)) {
+    param_values <- vapply(
+      params,
+      function(p) to_numeric(history_df[[p]][i]),
+      numeric(1)
+    )
+    if (any(!is.finite(param_values))) {
+      next
+    }
+    param_list <- as.list(param_values)
+    names(param_list) <- params
+    key <- .desurv_bo_make_key(param_list)
+    if (nzchar(key) && key %in% existing_keys) {
+      next
+    }
+    unit_coords <- .desurv_bo_values_to_unit(param_values, bound_info)
+    if (any(is.na(unit_coords))) {
+      next
+    }
+    eval_id <- eval_id + 1L
+    row_df <- cbind(
+      data.frame(
+        eval_id = eval_id,
+        stage = stage_vec[i],
+        iteration = iter_vec[i],
+        stringsAsFactors = FALSE
+      ),
+      as.data.frame(as.list(param_values), optional = TRUE, stringsAsFactors = FALSE),
+      data.frame(
+        mean_cindex = mean_vec[i],
+        status = status_vec[i],
+        message = message_vec[i],
+        elapsed = elapsed_vec[i],
+        stringsAsFactors = FALSE
+      )
+    )
+    row_df <- as.data.frame(row_df, stringsAsFactors = FALSE)
+    history_rows[[length(history_rows) + 1L]] <- row_df
+    unit_store[[eval_id]] <- unit_coords
+    existing_keys <- c(existing_keys, key)
+  }
+
+  empty$history_rows <- history_rows
+  empty$unit_store <- unit_store
+  cleaned_keys <- existing_keys[!is.na(existing_keys) & nzchar(existing_keys)]
+  empty$existing_keys <- unique(cleaned_keys)
+  empty$last_eval_id <- eval_id
+  empty$n_loaded <- eval_id
+  empty$n_discarded <- n - eval_id
+  empty
 }

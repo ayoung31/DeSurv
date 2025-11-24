@@ -15,6 +15,7 @@ desurv_bayesopt(
   engine = c("cold", "warmstart"),
   bo_bounds = desurv_bo_default_bounds(),
   bo_fixed = list(),
+  bo_history = NULL,
   n_init = NULL,
   n_iter = 20,
   candidate_pool = NULL,
@@ -44,6 +45,11 @@ in the prompt (see \code{\link[=desurv_bo_default_bounds]{desurv_bo_default_boun
 \item{bo_fixed}{Named list of scalar arguments that should remain constant
 during optimisation (e.g., \code{lambdaW_grid = 0}, \code{lambdaH_grid = 0},
 \code{nfolds = 5}). These override the defaults used in the optimiser.}
+
+\item{bo_history}{Optional object returned by \code{\link[=desurv_bayesopt]{desurv_bayesopt()}} or
+\code{\link[=desurv_cv_bayesopt]{desurv_cv_bayesopt()}} (or a compatible evaluation history data frame)
+used to warm-start a new optimisation run. Only evaluations that fall
+inside the current \code{bo_bounds} are imported.}
 
 \item{n_init}{Number of Latin-hypercube evaluations before fitting the GP.
 Defaults to \code{max(5, 3 * length(bo_bounds))}.}
