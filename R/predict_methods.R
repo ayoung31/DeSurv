@@ -39,6 +39,7 @@ coef.desurv_fit <- function(object, ...) {
 
 .desurv_prepare_newdata <- function(newdata, object) {
   template <- object$data$X
+  preprocess_meta <- object$preprocess
 
   if (is.null(newdata)) {
     return(template)
@@ -53,7 +54,12 @@ coef.desurv_fit <- function(object, ...) {
     stop("`newdata` must be coercible to a numeric matrix.")
   }
 
-  train_genes <- rownames(template)
+  train_genes <- if (!is.null(preprocess_meta$genes)) {
+    preprocess_meta$genes
+  } else {
+    rownames(template)
+  }
+
   if (!is.null(train_genes)) {
     if (is.null(rownames(X))) {
       if (nrow(X) != length(train_genes)) {
@@ -72,6 +78,44 @@ coef.desurv_fit <- function(object, ...) {
     X <- X[train_genes, , drop = FALSE]
   } else if (nrow(X) != nrow(template)) {
     stop("`newdata` must have ", nrow(template), " rows to match the training data.")
+  }
+
+  if (!is.null(preprocess_meta)) {
+    X[is.na(X)] <- 0
+    method <- preprocess_meta$method_trans_train
+    if (isTRUE(method == "rank")) {
+      X_rank <- apply(X, 2, rank, ties.method = "average")
+      dim(X_rank) <- dim(X)
+      dimnames(X_rank) <- dimnames(X)
+      X <- X_rank
+    } else if (isTRUE(method == "quant")) {
+      if (!requireNamespace("preprocessCore", quietly = TRUE)) {
+        stop("Package `preprocessCore` is required for quantile normalization.")
+      }
+      target_info <- .desurv_unpack_quant_target(
+        preprocess_meta$transform_target,
+        fallback_genes = train_genes
+      )
+      if (is.null(target_info$values)) {
+        stop("Quantile normalization target is missing from the fitted model.", call. = FALSE)
+      }
+      gene_order <- rownames(X)
+      X <- preprocessCore::normalize.quantiles.use.target(
+        X,
+        target = target_info$values
+      )
+      final_genes <- if (!is.null(target_info$genes)) {
+        if (nrow(X) != length(target_info$genes)) {
+          stop("Quantile normalization gene dimension mismatch at prediction time.", call. = FALSE)
+        }
+        target_info$genes
+      } else {
+        gene_order
+      }
+      if (!is.null(final_genes)) {
+        rownames(X) <- final_genes
+      }
+    }
   }
 
   storage.mode(X) <- "double"

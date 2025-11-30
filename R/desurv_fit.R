@@ -103,6 +103,9 @@
 #'   user-specified \code{W0, H0, beta0} are provided.
 #' @param verbose Logical; if \code{TRUE}, progress messages and warnings are
 #'   printed during initialization and optimization.
+#' @param preprocess_info Optional list containing preprocessing metadata
+#'   (gene order, transformation method, normalization targets) that should
+#'   be stored on the fitted object for use during prediction.
 #'
 #' @return
 #' An object of class \code{"desurv_fit"} with components including:
@@ -121,6 +124,8 @@
 #'         fitting.
 #'   \item \code{hyper}: list of hyperparameters actually used after
 #'         validation and possible clipping.
+#'   \item \code{preprocess}: optional preprocessing metadata captured from
+#'         the training pipeline.
 #' }
 #'
 #' @examples
@@ -195,7 +200,8 @@ desurv_fit <- function(
     ninit         = 20,
     parallel_init = FALSE,
     ncores_init   = NULL,
-    verbose       = TRUE
+    verbose       = TRUE,
+    preprocess_info = NULL
 ) {
   # Build or reuse desurv_data object
   data <- .as_desurv_data(X, y = y, d = d, k = k)
@@ -301,7 +307,8 @@ desurv_fit <- function(
       cindex_init = cindex_init,
       convergence = isTRUE(fit_full$convergence),
       data        = data,
-      hyper       = hp
+      hyper       = hp,
+      preprocess  = preprocess_info
     ),
     class = "desurv_fit"
   )

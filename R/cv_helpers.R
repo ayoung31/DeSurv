@@ -117,3 +117,124 @@
   }
   args
 }
+
+#' @keywords internal
+.desurv_apply_validation_transform <- function(X, method, target) {
+  if (method == "rank") {
+    X_rank <- apply(X, 2, rank, ties.method = "average")
+    dim(X_rank) <- dim(X)
+    dimnames(X_rank) <- dimnames(X)
+    return(X_rank)
+  }
+  if (method == "quant") {
+    if (!requireNamespace("preprocessCore", quietly = TRUE)) {
+      stop("Package `preprocessCore` is required for quantile normalization.")
+    }
+    target_info <- .desurv_unpack_quant_target(target)
+    if (is.null(target_info$values)) {
+      stop("Quantile normalization target is missing for validation data.")
+    }
+    gene_order <- rownames(X)
+    X_norm <- preprocessCore::normalize.quantiles.use.target(
+      X,
+      target = target_info$values
+    )
+    final_genes <- if (!is.null(target_info$genes)) {
+      if (length(target_info$genes) != nrow(X_norm)) {
+        stop("Quantile normalization gene dimension mismatch for validation data.")
+      }
+      target_info$genes
+    } else {
+      gene_order
+    }
+    if (!is.null(final_genes)) {
+      rownames(X_norm) <- final_genes
+    }
+    return(X_norm)
+  }
+  if (method != "none") {
+    stop("Unsupported transformation specified.")
+  }
+  X
+}
+
+#' @keywords internal
+.desurv_prepare_fold_payload <- function(
+    X_full,
+    y_full,
+    d_full,
+    dataset_full,
+    idx_tr,
+    idx_val,
+    preprocess,
+    ngene,
+    genes,
+    method_trans_train,
+    verbose
+) {
+  X_tr <- X_full[, idx_tr, drop = FALSE]
+  y_tr <- y_full[idx_tr]
+  d_tr <- d_full[idx_tr]
+  dataset_tr <- dataset_full[idx_tr]
+
+  X_val <- X_full[, idx_val, drop = FALSE]
+  y_val <- y_full[idx_val]
+  d_val <- d_full[idx_val]
+
+  if (!preprocess) {
+    list(
+      X_tr     = X_tr,
+      y_tr     = y_tr,
+      d_tr     = d_tr,
+      dataset_tr = dataset_tr,
+      X_val    = X_val,
+      y_val    = y_val,
+      d_val    = d_val,
+      p_tr     = nrow(X_tr),
+      n_tr     = ncol(X_tr),
+      max_x_tr = {
+        m <- max(X_tr)
+        if (!is.finite(m) || m <= 0) 1 else m
+      }
+    )
+  } else {
+    proc <- preprocess_data(
+      X                  = X_tr,
+      y                  = y_tr,
+      d                  = d_tr,
+      dataset            = dataset_tr,
+      ngene              = ngene,
+      genes              = genes,
+      method_trans_train = method_trans_train,
+      verbose            = verbose
+    )
+
+    X_tr_proc <- proc$ex
+    samp_tr   <- proc$sampInfo
+
+    genes_keep <- proc$featInfo
+    X_val_proc <- X_val[genes_keep, , drop = FALSE]
+    X_val_proc[is.na(X_val_proc)] <- 0
+    X_val_proc <- .desurv_apply_validation_transform(
+      X_val_proc,
+      method = method_trans_train,
+      target = proc$transform_target
+    )
+
+    list(
+      X_tr     = X_tr_proc,
+      y_tr     = samp_tr$time,
+      d_tr     = samp_tr$event,
+      dataset_tr = samp_tr$dataset,
+      X_val    = X_val_proc,
+      y_val    = y_val,
+      d_val    = d_val,
+      p_tr     = nrow(X_tr_proc),
+      n_tr     = ncol(X_tr_proc),
+      max_x_tr = {
+        m <- max(X_tr_proc)
+        if (!is.finite(m) || m <= 0) 1 else m
+      }
+    )
+  }
+}

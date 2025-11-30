@@ -28,6 +28,41 @@
 #'   }
 #'
 #' @export
+.desurv_make_quant_target <- function(values, genes) {
+  if (is.null(values)) {
+    return(NULL)
+  }
+  values_num <- as.numeric(values)
+  list(
+    values = values_num,
+    genes  = if (is.null(genes)) NULL else as.character(genes)
+  )
+}
+
+.desurv_unpack_quant_target <- function(target, fallback_genes = NULL) {
+  if (is.null(target)) {
+    return(list(values = NULL, genes = fallback_genes))
+  }
+  if (is.list(target)) {
+    values <- target$values
+    if (is.null(values) && !is.null(target$target)) {
+      values <- target$target
+    }
+    genes <- target$genes
+    if (is.null(genes)) {
+      genes <- fallback_genes
+    }
+    return(list(
+      values = if (is.null(values)) NULL else as.numeric(values),
+      genes  = if (is.null(genes)) NULL else as.character(genes)
+    ))
+  }
+  list(
+    values = as.numeric(target),
+    genes  = fallback_genes
+  )
+}
+
 preprocess_data <- function(
     X,
     y,
@@ -121,6 +156,7 @@ preprocess_data <- function(
 
   X[is.na(X)] <- 0
 
+  transform_target <- NULL
   if (method_trans_train == "rank") {
     X_rank <- apply(X, 2, rank, ties.method = "average")
     dim(X_rank) <- dim(X)
@@ -130,7 +166,20 @@ preprocess_data <- function(
     if (!requireNamespace("preprocessCore", quietly = TRUE)) {
       stop("Package `preprocessCore` is required for quantile normalization.")
     }
-    X <- preprocessCore::normalize.quantiles(X, keep.names = TRUE)
+    gene_order <- rownames(X)
+    # Store the training target and gene order for prediction-time reuse.
+    target_values <- preprocessCore::normalize.quantiles.determine.target(X)
+    transform_target <- .desurv_make_quant_target(target_values, gene_order)
+    X <- preprocessCore::normalize.quantiles.use.target(
+      X,
+      target = transform_target$values
+    )
+    if (!is.null(transform_target$genes)) {
+      if (nrow(X) != length(transform_target$genes)) {
+        stop("Quantile normalization changed gene dimensions unexpectedly.")
+      }
+      rownames(X) <- transform_target$genes
+    }
   } else if (method_trans_train != "none") {
     stop("Unsupported transformation specified.")
   }
@@ -147,8 +196,10 @@ preprocess_data <- function(
 
   list(
     ex        = X,
-    sampInfo  = data.frame_samp,
-    featInfo  = rownames(X),
-    samp_keeps = keep_idx
+    sampInfo          = data.frame_samp,
+    featInfo          = rownames(X),
+    samp_keeps        = keep_idx,
+    transform_target  = transform_target,
+    method_trans_train = method_trans_train
   )
 }

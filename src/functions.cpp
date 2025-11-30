@@ -70,6 +70,8 @@ void update_H_cpp(const arma::mat& X,
 
   H = H % num / (denom + eps);
 
+  H.transform([&](double v){ return (v < eps ? eps : v); });
+
   return;
 }
 
@@ -87,8 +89,9 @@ List calc_loss_cpp(const arma::mat& X,
                    double alpha, double lambda, double nu,
                    double lambdaW, double lambdaH, arma::rowvec sdZ) {
 
-
-  double nmf_loss = arma::accu(arma::square(X - W * H))/(2.0 * n * p);
+  double penalty_H = arma::accu(arma::square(H))/(2.0 * n * k);
+  double nmf_loss = arma::accu(arma::square(X - W * H))/(2.0 * n * p) +
+    (lambdaH * penalty_H);
 
   double penalty_beta = (1 - nu) * arma::accu(arma::square(beta%sdZ.t())) / 2.0 +
                         nu * arma::accu(arma::abs(beta%sdZ.t()));
@@ -98,10 +101,10 @@ List calc_loss_cpp(const arma::mat& X,
 
   double surv_loss = cs.loglik * 2.0 / n_event;
   double penalty_W = arma::accu(arma::square(W))/(2.0 * p * k);
-  double penalty_H = arma::accu(arma::square(H))/(2.0 * n * k);
+
   double loss = (1-alpha)*nmf_loss -
                 alpha * (surv_loss - lambda*penalty_beta) +
-                lambdaW*penalty_W + lambdaH*penalty_H;
+                lambdaW*penalty_W;
 
    // Rcout << "survloss " << surv_loss<< "\n";
    // Rcout << "pen beta " << lambda*penalty_beta << "\n";
@@ -139,7 +142,7 @@ void update_W_damped_backtrack(const arma::mat& X,
                               double lambdaH,
                               arma::rowvec sdZ,
                               // tuning
-                              double theta_init = 0.5,
+                              double theta_init = 1.0,
                               double rho = 0.5,
                               int max_backtracks = 10)
 {
@@ -172,13 +175,13 @@ void update_W_damped_backtrack(const arma::mat& X,
     double gn = arma::norm(grad_nmf, "fro") + 1e-12;
     double gc = arma::norm(dW_cox, "fro") + 1e-12;
 
-    double cox_scale = alpha*gn / gc;
+    double cox_scale = alpha * std::max(gn / gc, 1e12);
     num = num + cox_scale * dW_cox;
 
   }
 
   arma::mat R = num / (denom + eps);
-  R.transform([&](double v){ return (v < 0.0 ? 0.0 : v); });
+  // R.transform([&](double v){ return (v < eps ? eps : v); });
 
   // --- Backtracking on θ ---
   const arma::mat W_old = W;
@@ -189,7 +192,7 @@ void update_W_damped_backtrack(const arma::mat& X,
 
   while (bt <= max_backtracks) {
     arma::mat W_trial = W_old % ((1.0 - theta) + theta * R);
-    //W_trial.transform([&](double v){ return (v < eps ? eps : v); });
+    W_trial.transform([&](double v){ return (v < eps ? eps : v); });
 
     arma::mat  Wn = W_trial;               // normalized W
     arma::mat  Hn = H;                     // H to rescale inversely
@@ -448,7 +451,8 @@ List optimize_loss_cpp(const arma::mat& X_in,
 
    while (eps > tol && it < maxit) {
      loss_prev = loss;
-
+     // ---- H update (your function) ----
+     update_H_cpp(X, y, d, W, H, n, p, k, alpha, lambdaH);
 
      // ---- W update with damping + backtracking ----
      update_W_damped_backtrack(
@@ -457,9 +461,6 @@ List optimize_loss_cpp(const arma::mat& X_in,
        sdZ, theta_init, rho,
        max_backtracks
      );
-
-     // ---- H update (your function) ----
-     update_H_cpp(X, y, d, W, H, n, p, k, alpha, lambdaH);
 
      // ---- β update on Z = (M%X)^T W ----
      {

@@ -38,6 +38,10 @@
     tol           = 1e-6,
     maxit         = 1000,
     ntop          = NULL,
+    preprocess    = FALSE,
+    ngene         = 1000,
+    genes         = NULL,
+    method_trans_train = c("rank", "quant", "none"),
     parallel_grid = FALSE,
     ncores_grid   = NULL,
     verbose       = TRUE
@@ -73,7 +77,13 @@
   }
 
   ## --- validate data once ---
+  preprocess_flag <- isTRUE(preprocess)
+  method_trans_train <- match.arg(method_trans_train)
+
   if (inherits(X, "desurv_data")) {
+    if (preprocess_flag) {
+      stop("preprocess = TRUE is not supported when `X` is already a 'desurv_data' object.")
+    }
     X_full <- X$X
     y_full <- X$y
     d_full <- X$d
@@ -145,6 +155,26 @@
   }
   base_jobs$job_id <- seq_len(nrow(base_jobs))
 
+  fold_cache <- vector("list", length = length(fold_levels))
+  names(fold_cache) <- as.character(fold_levels)
+  for (f in fold_levels) {
+    idx_val <- which(folds == f)
+    idx_tr  <- setdiff(seq_len(n), idx_val)
+    fold_cache[[as.character(f)]] <- .desurv_prepare_fold_payload(
+      X_full             = X_full,
+      y_full             = y_full,
+      d_full             = d_full,
+      dataset_full       = dataset_full,
+      idx_tr             = idx_tr,
+      idx_val            = idx_val,
+      preprocess         = preprocess_flag,
+      ngene              = ngene,
+      genes              = genes,
+      method_trans_train = method_trans_train,
+      verbose            = verbose
+    )
+  }
+
   job_payloads <- vector("list", length = nrow(base_jobs))
   for (job_idx in seq_len(nrow(base_jobs))) {
     job_row <- base_jobs[job_idx, , drop = FALSE]
@@ -158,23 +188,12 @@
     lambdaW_cur <- hp$lambdaW
     lambdaH_cur <- hp$lambdaH
 
-    idx_val <- which(folds == f)
-    idx_tr  <- setdiff(seq_len(n), idx_val)
-
-    X_tr <- X_full[, idx_tr, drop = FALSE]
-    y_tr <- y_full[idx_tr]
-    d_tr <- d_full[idx_tr]
-
-    X_val <- X_full[, idx_val, drop = FALSE]
-    y_val <- y_full[idx_val]
-    d_val <- d_full[idx_val]
-
-    has_events_tr <- sum(d_tr) > 0
-    data_tr <- if (has_events_tr) desurv_data(X_tr, y_tr, d_tr, k_cur) else NULL
-
-    max_x_tr <- max(X_tr)
-    if (!is.finite(max_x_tr) || max_x_tr <= 0) {
-      max_x_tr <- 1
+    fold_payload <- fold_cache[[as.character(f)]]
+    has_events_tr <- sum(fold_payload$d_tr) > 0
+    data_tr <- if (has_events_tr) {
+      desurv_data(fold_payload$X_tr, fold_payload$y_tr, fold_payload$d_tr, k_cur)
+    } else {
+      NULL
     }
 
     seed_fold <- if (is.null(seed)) NULL else {
@@ -188,12 +207,12 @@
       lambdaW_cur = lambdaW_cur,
       lambdaH_cur = lambdaH_cur,
       data_tr     = data_tr,
-      X_val       = X_val,
-      y_val       = y_val,
-      d_val       = d_val,
-      p_tr        = nrow(X_tr),
-      n_tr        = ncol(X_tr),
-      max_x_tr    = max_x_tr,
+      X_val       = fold_payload$X_val,
+      y_val       = fold_payload$y_val,
+      d_val       = fold_payload$d_val,
+      p_tr        = fold_payload$p_tr,
+      n_tr        = fold_payload$n_tr,
+      max_x_tr    = fold_payload$max_x_tr,
       seed_fold   = seed_fold,
       has_events_tr = has_events_tr
     )

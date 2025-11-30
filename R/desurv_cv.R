@@ -277,6 +277,10 @@ desurv_cv <- function(
     tol           = tol,
     maxit         = maxit,
     ntop          = ntop,
+    preprocess    = preprocess,
+    ngene         = ngene,
+    genes         = genes,
+    method_trans_train = method_trans_train,
     parallel_grid = parallel_grid,
     ncores_grid   = ncores_grid,
     verbose       = verbose
@@ -372,8 +376,40 @@ desurv_cv <- function(
       lambdaH = best_row$lambdaH,
       tol     = tol,
       maxit   = maxit,
-      verbose = verbose
+      verbose = verbose,
+      preprocess_info = preprocess_info
     )
+  } else if (isTRUE(preprocess)) {
+    data_final <- preprocess_data(
+      X                  = X,
+      y                  = y,
+      d                  = d,
+      dataset            = dataset,
+      samp_keeps         = NULL,
+      ngene              = ngene,
+      genes              = genes,
+      method_trans_train = method_trans_train,
+      verbose            = verbose
+    )
+    fit_best <- desurv_fit(
+      X       = data_final$ex,
+      y       = data_final$sampInfo$time,
+      d       = data_final$sampInfo$event,
+      k       = best_row$k,
+      alpha   = best_row$alpha,
+      lambda  = best_row$lambda,
+      nu      = best_row$nu,
+      lambdaW = best_row$lambdaW,
+      lambdaH = best_row$lambdaH,
+      tol     = tol,
+      maxit   = maxit,
+      verbose = verbose,
+      preprocess_info = preprocess_info
+    )
+    if (!is.null(preprocess_info)) {
+      preprocess_info$genes <- data_final$featInfo
+      preprocess_info$transform_target <- data_final$transform_target
+    }
   } else {
     fit_best <- desurv_fit(
       X       = X,
@@ -435,7 +471,13 @@ desurv_cv <- function(
     method_trans_train,
     verbose
 ) {
-  if (!preprocess) {
+  if (inherits(X, "desurv_data")) {
+    if (!is.null(samp_keeps)) {
+      warning("Ignoring `samp_keeps` because `X` is already a 'desurv_data' object.")
+    }
+    if (isTRUE(preprocess)) {
+      stop("preprocess = TRUE is not supported when `X` is already a 'desurv_data' object.")
+    }
     return(list(
       X = X,
       y = y,
@@ -445,59 +487,64 @@ desurv_cv <- function(
     ))
   }
 
-  if (inherits(X, "desurv_data")) {
-    stop("preprocess = TRUE is not supported when `X` is already a 'desurv_data' object.")
+  X_mat <- as.matrix(X)
+  if (!is.numeric(X_mat)) {
+    stop("`X` must be a numeric matrix when preprocess = TRUE.")
   }
-  if (is.null(dataset)) {
+
+  if (isTRUE(preprocess) && is.null(dataset)) {
     stop("`dataset` must be supplied when preprocess = TRUE.")
   }
 
-  if (isTRUE(verbose)) {
-    message(paste0("Filtering to top ", ngene, " highly expressed and variable genes per dataset"))
+  normalize_idx <- function(idx, n, sample_names) {
+    if (is.null(idx)) {
+      return(seq_len(n))
+    }
+    if (is.logical(idx)) {
+      if (length(idx) != n) stop("Logical `samp_keeps` must match number of samples.")
+      return(which(idx))
+    }
+    if (is.numeric(idx)) {
+      idx <- as.integer(idx)
+      if (anyNA(idx) || any(idx < 1L | idx > n)) stop("Numeric `samp_keeps` out of bounds.")
+      return(unique(idx))
+    }
+    if (is.character(idx)) {
+      if (is.null(sample_names)) stop("Character `samp_keeps` requires column names on `X`.")
+      pos <- match(idx, sample_names)
+      if (anyNA(pos)) stop("Character `samp_keeps` contains unknown sample IDs.")
+      return(unique(pos))
+    }
+    stop("`samp_keeps` must be logical, numeric, character, or NULL.")
   }
 
-  data_proc <- preprocess_data(
-    X                  = X,
-    y                  = y,
-    d                  = d,
-    dataset            = dataset,
-    samp_keeps         = samp_keeps,
-    ngene              = ngene,
-    genes              = genes,
-    method_trans_train = method_trans_train,
-    verbose            = verbose
-  )
-
-  required_cols <- c("time", "event")
-  if (!all(required_cols %in% colnames(data_proc$sampInfo))) {
-    stop("Expected columns 'time' and 'event' in data$sampInfo after preprocessing.")
+  keep_idx <- normalize_idx(samp_keeps, ncol(X_mat), colnames(X_mat))
+  if (length(keep_idx) == 0L) {
+    stop("No samples selected after applying `samp_keeps`.")
   }
 
-  X_proc <- data_proc$ex
-  y_proc <- data_proc$sampInfo$time
-  d_proc <- data_proc$sampInfo$event
-  dataset_proc <- data_proc$sampInfo$dataset
+  X_mat <- X_mat[, keep_idx, drop = FALSE]
+  y <- y[keep_idx]
+  d <- d[keep_idx]
+  dataset <- if (is.null(dataset)) NULL else dataset[keep_idx]
 
-  genes_proc <- if (!is.null(data_proc$featInfo)) {
-    data_proc$featInfo
-  } else if (!is.null(rownames(X_proc))) {
-    rownames(X_proc)
+  preprocess_info <- if (isTRUE(preprocess)) {
+    list(
+      ngene              = ngene,
+      genes              = genes,
+      method_trans_train = method_trans_train,
+      samp_keeps         = keep_idx,
+      per_fold           = TRUE
+    )
   } else {
-    genes
+    NULL
   }
-
-  preprocess_info <- list(
-    ngene              = ngene,
-    genes              = genes_proc,
-    method_trans_train = method_trans_train,
-    samp_keeps         = data_proc$samp_keeps
-  )
 
   list(
-    X = X_proc,
-    y = y_proc,
-    d = d_proc,
-    dataset = dataset_proc,
+    X = X_mat,
+    y = y,
+    d = d,
+    dataset = dataset,
     preprocess_info = preprocess_info
   )
 }
