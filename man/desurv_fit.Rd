@@ -25,7 +25,8 @@ desurv_fit(
   ninit = 20,
   parallel_init = FALSE,
   ncores_init = NULL,
-  verbose = TRUE
+  verbose = TRUE,
+  preprocess_info = NULL
 )
 }
 \arguments{
@@ -105,6 +106,10 @@ user-specified \code{W0, H0, beta0} are provided.}
 
 \item{verbose}{Logical; if \code{TRUE}, progress messages and warnings are
 printed during initialization and optimization.}
+
+\item{preprocess_info}{Optional list containing preprocessing metadata
+(gene order, transformation method, normalization targets) that should
+be stored on the fitted object for use during prediction.}
 }
 \value{
 An object of class \code{"desurv_fit"} with components including:
@@ -123,6 +128,8 @@ optimization satisfied the stopping criterion before exhausting
 fitting.
 \item \code{hyper}: list of hyperparameters actually used after
 validation and possible clipping.
+\item \code{preprocess}: optional preprocessing metadata captured from
+the training pipeline.
 }
 }
 \description{

@@ -22,6 +22,10 @@
   tol = 1e-06,
   maxit = 1000,
   ntop = NULL,
+  preprocess = FALSE,
+  ngene = 1000,
+  genes = NULL,
+  method_trans_train = c("rank", "quant", "none"),
   parallel_grid = FALSE,
   ncores_grid = NULL,
   verbose = TRUE

@@ -1,33 +1,3 @@
-#' Preprocess multi-cohort expression data for DeSurv models
-#'
-#' @description
-#' Filters samples, restricts genes (either via `gene_filter()` per dataset or
-#' via a supplied gene list), and applies an optional within-sample
-#' transformation prior to calling downstream DeSurv routines.
-#'
-#' @param X Numeric matrix (genes x samples) of expression values.
-#' @param y Numeric vector of survival times, length `ncol(X)`.
-#' @param d Numeric (0/1) event indicator vector, length `ncol(X)`.
-#' @param dataset Vector identifying the cohort/dataset for each sample.
-#' @param samp_keeps Optional logical/integer/character index of samples to
-#'   retain before preprocessing. Defaults to all samples.
-#' @param ngene Integer number of genes to retain per dataset when `genes` is
-#'   `NULL`.
-#' @param genes Optional character vector of genes to keep (overrides `ngene`
-#'   filtering).
-#' @param method_trans_train Character string: `"rank"`, `"quant"`, or `"none"`
-#'   describing the per-sample transformation applied after filtering.
-#' @param verbose Logical; if `TRUE`, emit preprocessing progress messages.
-#'
-#' @return A list with components
-#'   \describe{
-#'     \item{ex}{Processed expression matrix.}
-#'     \item{sampInfo}{Data frame containing `time`, `event`, and `dataset`.}
-#'     \item{featInfo}{Character vector of retained gene identifiers.}
-#'     \item{samp_keeps}{Integer indices of samples retained.}
-#'   }
-#'
-#' @export
 .desurv_make_quant_target <- function(values, genes) {
   if (is.null(values)) {
     return(NULL)
@@ -63,6 +33,36 @@
   )
 }
 
+#' Preprocess multi-cohort expression data for DeSurv models
+#'
+#' @description
+#' Filters samples, restricts genes (either via `gene_filter()` per dataset or
+#' via a supplied gene list), and applies an optional within-sample
+#' transformation prior to calling downstream DeSurv routines.
+#'
+#' @param X Numeric matrix (genes x samples) of expression values.
+#' @param y Numeric vector of survival times, length `ncol(X)`.
+#' @param d Numeric (0/1) event indicator vector, length `ncol(X)`.
+#' @param dataset Vector identifying the cohort/dataset for each sample.
+#' @param samp_keeps Optional logical/integer/character index of samples to
+#'   retain before preprocessing. Defaults to all samples.
+#' @param ngene Integer number of genes to retain per dataset when `genes` is
+#'   `NULL`.
+#' @param genes Optional character vector of genes to keep (overrides `ngene`
+#'   filtering).
+#' @param method_trans_train Character string: `"rank"`, `"quant"`, or `"none"`
+#'   describing the per-sample transformation applied after filtering.
+#' @param verbose Logical; if `TRUE`, emit preprocessing progress messages.
+#'
+#' @return A list with components
+#'   \describe{
+#'     \item{ex}{Processed expression matrix.}
+#'     \item{sampInfo}{Data frame containing `time`, `event`, and `dataset`.}
+#'     \item{featInfo}{Character vector of retained gene identifiers.}
+#'     \item{samp_keeps}{Integer indices of samples retained.}
+#'   }
+#'
+#' @export
 preprocess_data <- function(
     X,
     y,
