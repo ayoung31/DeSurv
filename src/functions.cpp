@@ -173,8 +173,6 @@ void update_W_damped_backtrack(const arma::mat& X,
 
     double gn = arma::norm(grad_nmf, "fro") + 1e-12;
     double gc = arma::norm(dW_cox, "fro") + 1e-12;
-    Rcout << "gn: " << gn << "\n";
-    Rcout << "gc: " << gc << "\n";
 
 
     double cox_scale = alpha * std::min(gn / gc, 1e6);
