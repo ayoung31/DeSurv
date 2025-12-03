@@ -66,7 +66,7 @@ void update_H_cpp(const arma::mat& X,
 
   arma::mat Wt = W.t();
   arma::mat num = Wt * X;
-  arma::mat denom = (Wt * W * H) + (((1-alpha)*lambdaH*p / k) * H);
+  arma::mat denom = (Wt * W * H) + ((lambdaH*p / (k)) * H);
 
   H = H % num / (denom + eps);
 
@@ -101,7 +101,7 @@ List calc_loss_cpp(const arma::mat& X,
   double surv_loss = cs.loglik * 2.0 / n_event;
   double penalty_W = arma::accu(arma::square(W))/(2.0 * p * k);
 
-  double loss = (1-alpha)*(nmf_loss) + lambdaH*penalty_H -
+  double loss = (1-alpha)*(nmf_loss + lambdaH*penalty_H) -
                 alpha * (surv_loss - lambda*penalty_beta) +
                 lambdaW*penalty_W;
 
@@ -173,6 +173,9 @@ void update_W_damped_backtrack(const arma::mat& X,
 
     double gn = arma::norm(grad_nmf, "fro") + 1e-12;
     double gc = arma::norm(dW_cox, "fro") + 1e-12;
+    Rcout << "gn: " << gn << "\n";
+    Rcout << "gc: " << gc << "\n";
+
 
     double cox_scale = alpha * std::min(gn / gc, 1e6);
     num = num + cox_scale * dW_cox;
