@@ -174,7 +174,6 @@ void update_W_damped_backtrack(const arma::mat& X,
     double gn = arma::norm(grad_nmf, "fro") + 1e-12;
     double gc = arma::norm(dW_cox, "fro") + 1e-12;
 
-
     double cox_scale = alpha * std::min(gn / gc, 1e6);
     num = num + cox_scale * dW_cox;
 
@@ -495,6 +494,8 @@ List optimize_loss_cpp(const arma::mat& X_in,
      pwlossit[it] = penaltyW;
      phlossit[it] = penaltyH;
 
+     // Rprintf("iter: %d  eps: %.8e  loss: %.8e  nmf: %.8e  surv: %.8e\n",
+     // it, eps, loss, nmfloss, survloss);
       if (verbose) {
         Rprintf("iter: %d  eps: %.8e  loss: %.8e  nmf: %.8e  surv: %.8e\n",
                 it, eps, loss, nmfloss, survloss);
