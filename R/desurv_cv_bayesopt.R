@@ -222,6 +222,7 @@ desurv_cv_bayesopt <- function(
   existing_keys <- warmstart$existing_keys
   history_rows <- warmstart$history_rows
   unit_store <- warmstart$unit_store
+  diagnostic_store <- list()
   eval_id <- warmstart$last_eval_id
   last_km_fit <- NULL
 
@@ -261,6 +262,14 @@ desurv_cv_bayesopt <- function(
       score <- metric[1L]
       status <- "ok"
       msg <- NA_character_
+      diag_df <- result$diagnostics
+      if (!is.null(diag_df)) {
+        diag_df <- as.data.frame(diag_df, stringsAsFactors = FALSE)
+        diag_df$eval_id <- eval_id
+        diag_df$stage <- stage
+        diag_df$iteration <- iter
+        diagnostic_store[[length(diagnostic_store) + 1L]] <<- diag_df
+      }
     }
 
     # Store unit coordinates for GP fitting
@@ -449,6 +458,12 @@ desurv_cv_bayesopt <- function(
     }
   }
 
+  diag_history <- if (length(diagnostic_store)) {
+    do.call(rbind, diagnostic_store)
+  } else {
+    NULL
+  }
+
   structure(
     list(
       history = history_df,
@@ -460,7 +475,8 @@ desurv_cv_bayesopt <- function(
       fixed = fixed_params,
       seed = rng_seed,
       call = match.call(),
-      km_fit = last_km_fit
+      km_fit = last_km_fit,
+      diagnostics = diag_history
     ),
     class = "desurv_cv_bo"
   )

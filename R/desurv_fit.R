@@ -293,6 +293,7 @@ desurv_fit <- function(
   )
 
   fit_full$W <- attach_gene_names(fit_full$W)
+  nan_flag <- isTRUE(fit_full$nan_flag)
 
   Z_full  <- t(data$X) %*% fit_full$W
   lp_full <- drop(Z_full %*% fit_full$beta)
@@ -309,6 +310,7 @@ desurv_fit <- function(
       cindex      = cindex_full,
       cindex_init = cindex_init,
       convergence = isTRUE(fit_full$convergence),
+      nan_flag    = nan_flag,
       data        = data,
       hyper       = hp,
       preprocess  = preprocess_info

@@ -250,7 +250,17 @@
       )
       df <- df[, c("fold", "k", "lambda", "nu", "lambdaW", "lambdaH",
                    "init_id", "alpha", "cindex")]
-      return(df)
+      diag_df <- df
+      diag_df$train_cindex <- NA_real_
+      diag_df$train_convergence <- NA
+      diag_df$train_nan_flag <- NA
+      diag_df$val_has_events <- sum(payload$d_val) > 0L
+      diag_df$val_lp_has_na <- NA
+      diag_df$val_lp_has_inf <- NA
+      diag_df$val_cindex <- NA_real_
+      diag_df$status <- "no_train_events"
+      diag_df$message <- "Training data has zero events"
+      return(list(cv = df, diag = diag_df))
     }
 
     # unique seed for this (hyper, fold)
@@ -275,7 +285,10 @@
 
     # compute validation C-index vector for this init: length A
     cindex_vals <- rep(NA_real_, A)
+    diag_rows <- vector("list", A)
     fits_one <- ws_res$fits[[1L]]
+    val_has_events <- sum(payload$d_val) > 0L
+    surv_obj_val <- survival::Surv(payload$y_val, payload$d_val)
     for (i in seq_len(A)) {
       fit_ji <- fits_one[[i]]
       lp_val <- .desurv_lp_with_top_genes(
@@ -284,10 +297,52 @@
         ntop = ntop
       )
 
-      cindex_vals[i] <-
-        if (sum(payload$d_val) == 0L) NA_real_
-      else cvwrapr::getCindex(lp_val, survival::Surv(payload$y_val, payload$d_val))
+      lp_has_na <- anyNA(lp_val)
+      lp_has_inf <- any(is.infinite(lp_val))
+      lp_valid <- !(lp_has_na || lp_has_inf)
+
+      diag_row <- data.frame(
+        fold    = f,
+        k       = k_cur,
+        lambda  = lambda_cur,
+        nu      = nu_cur,
+        lambdaW = lambdaW_cur,
+        lambdaH = lambdaH_cur,
+        init_id = init_id,
+        alpha   = alpha_grid[i],
+        train_cindex = fit_ji$cindex,
+        train_convergence = isTRUE(fit_ji$convergence),
+        train_nan_flag = isTRUE(fit_ji$nan_flag),
+        val_has_events = val_has_events,
+        val_lp_has_na = lp_has_na,
+        val_lp_has_inf = lp_has_inf,
+        val_cindex = NA_real_,
+        status = "ok",
+        message = NA_character_,
+        row.names = NULL,
+        stringsAsFactors = FALSE
+      )
+
+      if (!val_has_events) {
+        cindex_vals[i] <- NA_real_
+        diag_row$status <- "no_val_events"
+        diag_row$message <- "Validation fold has zero events"
+      } else if (!lp_valid) {
+        cindex_vals[i] <- NA_real_
+        diag_row$status <- "nonfinite_linear_predictor"
+        diag_row$message <- "Linear predictor contained non-finite values"
+      } else {
+        cindex_val <- cvwrapr::getCindex(lp_val, surv_obj_val)
+        cindex_vals[i] <- cindex_val
+        diag_row$val_cindex <- cindex_val
+        if (is.na(cindex_val)) {
+          diag_row$status <- "cindex_na"
+          diag_row$message <- "C-index computation returned NA"
+        }
+      }
+      diag_rows[[i]] <- diag_row
     }
+    diag_df <- do.call(rbind, diag_rows)
 
     # tidy data.frame for this (hyper, fold, init) job
     df <- data.frame(
@@ -306,7 +361,7 @@
     # reorder columns a bit
     df <- df[, c("fold", "k", "lambda", "nu", "lambdaW", "lambdaH",
                  "init_id", "alpha", "cindex")]
-    df
+    list(cv = df, diag = diag_df)
   }
 
 
@@ -340,7 +395,8 @@
     )
   }
 
-  cv_results <- do.call(rbind, job_results)
+  cv_results <- do.call(rbind, lapply(job_results, `[[`, "cv"))
+  cv_diagnostics <- do.call(rbind, lapply(job_results, `[[`, "diag"))
 
   ## --- summaries ---
   mean_fold_safe <- function(x) {
@@ -399,6 +455,7 @@
     summary      = summary,      # step 2: mean across folds + SE, per alpha+hyper
     alpha_grid   = alpha_grid,
     hyper_grid   = hyper_grid,
-    folds        = folds
+    folds        = folds,
+    diagnostics  = cv_diagnostics
   )
 }

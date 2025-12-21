@@ -151,7 +151,11 @@ desurv_get_top_genes <- function(W, ntop) {
     return(predict(fit, newdata = X_new, type = "lp"))
   }
 
-  W_sub <- fit$W[idx, , drop = FALSE]
+  theta = fit$W %*% fit$beta
+
+  theta_sub = theta[idx, ,drop=FALSE]
+  theta_sub = theta_sub / sqrt(sum(theta_sub^2))
+
   X_sub <- X_new[idx, , drop = FALSE]
-  drop((t(X_sub) %*% W_sub) %*% fit$beta)
+  drop(t(X_sub) %*% theta_sub)
 }

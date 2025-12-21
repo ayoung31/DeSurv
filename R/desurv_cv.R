@@ -285,6 +285,32 @@ desurv_cv <- function(
     ncores_grid   = ncores_grid,
     verbose       = verbose
   )
+  if (is.null(cv_obj$diagnostics)) {
+    cv_obj$diagnostics <- NULL
+  }
+  if (!is.null(cv_obj$summary) && nrow(cv_obj$summary)) {
+    summary_cols <- c("k", "lambda", "nu", "lambdaW", "lambdaH", "alpha")
+    diag_df <- cv_obj$diagnostics
+    if (!is.null(diag_df) && nrow(diag_df)) {
+      diag_nan <- stats::aggregate(
+        train_nan_flag ~ k + lambda + nu + lambdaW + lambdaH + alpha,
+        data = diag_df,
+        FUN = function(x) any(isTRUE(x)),
+        na.action = stats::na.pass
+      )
+      names(diag_nan)[names(diag_nan) == "train_nan_flag"] <- "has_nan_issue"
+      cv_obj$summary <- merge(
+        cv_obj$summary,
+        diag_nan,
+        by = summary_cols,
+        all.x = TRUE,
+        sort = FALSE
+      )
+      cv_obj$summary$has_nan_issue[is.na(cv_obj$summary$has_nan_issue)] <- FALSE
+    } else if (!"has_nan_issue" %in% names(cv_obj$summary)) {
+      cv_obj$summary$has_nan_issue <- FALSE
+    }
+  }
 
   # Basic sanity check
   if (is.null(cv_obj$summary) || nrow(cv_obj$summary) == 0L) {
@@ -307,7 +333,28 @@ desurv_cv <- function(
   }
 
   # Use the pre-computed hyper+alpha summaries (mean + SE across folds)
-  summ2 <- cv_obj$summary
+  summ2_all <- cv_obj$summary
+  has_nan_col <- summ2_all$has_nan_issue
+  if (is.null(has_nan_col)) {
+    has_nan_col <- rep(FALSE, nrow(summ2_all))
+  } else {
+    has_nan_col <- isTRUE(has_nan_col)
+  }
+  valid_idx <- !has_nan_col
+  if (!any(valid_idx)) {
+    stop(
+      "All hyperparameter combinations produced NaN values in at least one fold/initialization. ",
+      "Adjust the search space or optimizer settings.",
+      call. = FALSE
+    )
+  }
+  if (any(!valid_idx) && isTRUE(verbose)) {
+    message(
+      "Discarding ", sum(!valid_idx),
+      " hyperparameter combination(s) due to NaN encounters during CV."
+    )
+  }
+  summ2 <- summ2_all[valid_idx, , drop = FALSE]
 
   mc <- summ2$mean_cindex
   se <- summ2$se_cindex
@@ -449,6 +496,7 @@ desurv_cv <- function(
     alpha_grid   = cv_obj$alpha_grid,
     hyper_grid   = cv_obj$hyper_grid,
     folds        = cv_obj$folds,
+    diagnostics  = cv_obj$diagnostics %||% NULL,
     ntop         = ntop,
     call         = call
   )
