@@ -338,7 +338,11 @@ desurv_cv <- function(
   if (is.null(has_nan_col)) {
     has_nan_col <- rep(FALSE, nrow(summ2_all))
   } else {
-    has_nan_col <- isTRUE(has_nan_col)
+    has_nan_col <- as.logical(has_nan_col)
+    has_nan_col[is.na(has_nan_col)] <- FALSE
+    if (length(has_nan_col) != nrow(summ2_all)) {
+      has_nan_col <- rep_len(has_nan_col, nrow(summ2_all))
+    }
   }
   valid_idx <- !has_nan_col
   if (!any(valid_idx)) {

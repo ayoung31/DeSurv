@@ -154,7 +154,12 @@ desurv_get_top_genes <- function(W, ntop) {
   theta = fit$W %*% fit$beta
 
   theta_sub = theta[idx, ,drop=FALSE]
-  theta_sub = theta_sub / sqrt(sum(theta_sub^2))
+  theta_norm = sqrt(sum(theta_sub^2))
+  if (!is.finite(theta_norm)) {
+    theta_sub[] = 0
+  } else if (theta_norm > 0) {
+    theta_sub = theta_sub / theta_norm
+  }
 
   X_sub <- X_new[idx, , drop = FALSE]
   drop(t(X_sub) %*% theta_sub)
