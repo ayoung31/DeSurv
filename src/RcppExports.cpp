@@ -13,8 +13,8 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // update_H_cpp
-void update_H_cpp(const arma::mat& X, const arma::colvec& y, const arma::colvec& delta, const arma::mat& W, arma::mat& H, int n, int p, int k, double alpha, double lambdaH);
-RcppExport SEXP _DeSurv_update_H_cpp(SEXP XSEXP, SEXP ySEXP, SEXP deltaSEXP, SEXP WSEXP, SEXP HSEXP, SEXP nSEXP, SEXP pSEXP, SEXP kSEXP, SEXP alphaSEXP, SEXP lambdaHSEXP) {
+void update_H_cpp(const arma::mat& X, const arma::colvec& y, const arma::colvec& delta, const arma::mat& W, arma::mat& H, int n, int p, int k, double Xnorm, double alpha, double lambdaH);
+RcppExport SEXP _DeSurv_update_H_cpp(SEXP XSEXP, SEXP ySEXP, SEXP deltaSEXP, SEXP WSEXP, SEXP HSEXP, SEXP nSEXP, SEXP pSEXP, SEXP kSEXP, SEXP XnormSEXP, SEXP alphaSEXP, SEXP lambdaHSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::mat& >::type X(XSEXP);
@@ -25,19 +25,21 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type n(nSEXP);
     Rcpp::traits::input_parameter< int >::type p(pSEXP);
     Rcpp::traits::input_parameter< int >::type k(kSEXP);
+    Rcpp::traits::input_parameter< double >::type Xnorm(XnormSEXP);
     Rcpp::traits::input_parameter< double >::type alpha(alphaSEXP);
     Rcpp::traits::input_parameter< double >::type lambdaH(lambdaHSEXP);
-    update_H_cpp(X, y, delta, W, H, n, p, k, alpha, lambdaH);
+    update_H_cpp(X, y, delta, W, H, n, p, k, Xnorm, alpha, lambdaH);
     return R_NilValue;
 END_RCPP
 }
 // calc_loss_cpp
-List calc_loss_cpp(const arma::mat& X, const arma::vec& delta, const arma::mat& W, const arma::mat& H, const arma::vec& beta, int n, int p, int k, int n_event, double alpha, double lambda, double nu, double lambdaW, double lambdaH, arma::rowvec sdZ);
-RcppExport SEXP _DeSurv_calc_loss_cpp(SEXP XSEXP, SEXP deltaSEXP, SEXP WSEXP, SEXP HSEXP, SEXP betaSEXP, SEXP nSEXP, SEXP pSEXP, SEXP kSEXP, SEXP n_eventSEXP, SEXP alphaSEXP, SEXP lambdaSEXP, SEXP nuSEXP, SEXP lambdaWSEXP, SEXP lambdaHSEXP, SEXP sdZSEXP) {
+List calc_loss_cpp(const arma::mat& X, const arma::vec& y, const arma::vec& delta, const arma::mat& W, const arma::mat& H, const arma::vec& beta, int n, int p, int k, int n_event, double Xnorm, double alpha, double lambda, double nu, double lambdaW, double lambdaH, arma::rowvec sdZ);
+RcppExport SEXP _DeSurv_calc_loss_cpp(SEXP XSEXP, SEXP ySEXP, SEXP deltaSEXP, SEXP WSEXP, SEXP HSEXP, SEXP betaSEXP, SEXP nSEXP, SEXP pSEXP, SEXP kSEXP, SEXP n_eventSEXP, SEXP XnormSEXP, SEXP alphaSEXP, SEXP lambdaSEXP, SEXP nuSEXP, SEXP lambdaWSEXP, SEXP lambdaHSEXP, SEXP sdZSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::mat& >::type X(XSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type y(ySEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type delta(deltaSEXP);
     Rcpp::traits::input_parameter< const arma::mat& >::type W(WSEXP);
     Rcpp::traits::input_parameter< const arma::mat& >::type H(HSEXP);
@@ -46,23 +48,25 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type p(pSEXP);
     Rcpp::traits::input_parameter< int >::type k(kSEXP);
     Rcpp::traits::input_parameter< int >::type n_event(n_eventSEXP);
+    Rcpp::traits::input_parameter< double >::type Xnorm(XnormSEXP);
     Rcpp::traits::input_parameter< double >::type alpha(alphaSEXP);
     Rcpp::traits::input_parameter< double >::type lambda(lambdaSEXP);
     Rcpp::traits::input_parameter< double >::type nu(nuSEXP);
     Rcpp::traits::input_parameter< double >::type lambdaW(lambdaWSEXP);
     Rcpp::traits::input_parameter< double >::type lambdaH(lambdaHSEXP);
     Rcpp::traits::input_parameter< arma::rowvec >::type sdZ(sdZSEXP);
-    rcpp_result_gen = Rcpp::wrap(calc_loss_cpp(X, delta, W, H, beta, n, p, k, n_event, alpha, lambda, nu, lambdaW, lambdaH, sdZ));
+    rcpp_result_gen = Rcpp::wrap(calc_loss_cpp(X, y, delta, W, H, beta, n, p, k, n_event, Xnorm, alpha, lambda, nu, lambdaW, lambdaH, sdZ));
     return rcpp_result_gen;
 END_RCPP
 }
 // update_beta_cpp
-arma::vec update_beta_cpp(const arma::mat& Z, const arma::vec delta, int n, int p, int n_event, double alpha, double nu, double lambda, arma::vec beta0, arma::rowvec& meanZ, arma::rowvec& sdZ, double eps, int max_iter, bool& flag_nan, bool flag_beta);
-RcppExport SEXP _DeSurv_update_beta_cpp(SEXP ZSEXP, SEXP deltaSEXP, SEXP nSEXP, SEXP pSEXP, SEXP n_eventSEXP, SEXP alphaSEXP, SEXP nuSEXP, SEXP lambdaSEXP, SEXP beta0SEXP, SEXP meanZSEXP, SEXP sdZSEXP, SEXP epsSEXP, SEXP max_iterSEXP, SEXP flag_nanSEXP, SEXP flag_betaSEXP) {
+arma::vec update_beta_cpp(const arma::mat& Z, const arma::vec& y, const arma::vec delta, int n, int p, int n_event, double alpha, double nu, double lambda, arma::vec beta0, arma::rowvec& meanZ, arma::rowvec& sdZ, double eps, int max_iter, bool& flag_nan, bool flag_beta);
+RcppExport SEXP _DeSurv_update_beta_cpp(SEXP ZSEXP, SEXP ySEXP, SEXP deltaSEXP, SEXP nSEXP, SEXP pSEXP, SEXP n_eventSEXP, SEXP alphaSEXP, SEXP nuSEXP, SEXP lambdaSEXP, SEXP beta0SEXP, SEXP meanZSEXP, SEXP sdZSEXP, SEXP epsSEXP, SEXP max_iterSEXP, SEXP flag_nanSEXP, SEXP flag_betaSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::mat& >::type Z(ZSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type y(ySEXP);
     Rcpp::traits::input_parameter< const arma::vec >::type delta(deltaSEXP);
     Rcpp::traits::input_parameter< int >::type n(nSEXP);
     Rcpp::traits::input_parameter< int >::type p(pSEXP);
@@ -77,7 +81,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type max_iter(max_iterSEXP);
     Rcpp::traits::input_parameter< bool& >::type flag_nan(flag_nanSEXP);
     Rcpp::traits::input_parameter< bool >::type flag_beta(flag_betaSEXP);
-    rcpp_result_gen = Rcpp::wrap(update_beta_cpp(Z, delta, n, p, n_event, alpha, nu, lambda, beta0, meanZ, sdZ, eps, max_iter, flag_nan, flag_beta));
+    rcpp_result_gen = Rcpp::wrap(update_beta_cpp(Z, y, delta, n, p, n_event, alpha, nu, lambda, beta0, meanZ, sdZ, eps, max_iter, flag_nan, flag_beta));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -117,9 +121,9 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_DeSurv_update_H_cpp", (DL_FUNC) &_DeSurv_update_H_cpp, 10},
-    {"_DeSurv_calc_loss_cpp", (DL_FUNC) &_DeSurv_calc_loss_cpp, 15},
-    {"_DeSurv_update_beta_cpp", (DL_FUNC) &_DeSurv_update_beta_cpp, 15},
+    {"_DeSurv_update_H_cpp", (DL_FUNC) &_DeSurv_update_H_cpp, 11},
+    {"_DeSurv_calc_loss_cpp", (DL_FUNC) &_DeSurv_calc_loss_cpp, 17},
+    {"_DeSurv_update_beta_cpp", (DL_FUNC) &_DeSurv_update_beta_cpp, 16},
     {"_DeSurv_optimize_loss_cpp", (DL_FUNC) &_DeSurv_optimize_loss_cpp, 24},
     {NULL, NULL, 0}
 };

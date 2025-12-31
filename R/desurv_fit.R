@@ -201,7 +201,8 @@ desurv_fit <- function(
     parallel_init = FALSE,
     ncores_init   = NULL,
     verbose       = TRUE,
-    preprocess_info = NULL
+    preprocess_info = NULL,
+    max_iter_beta = 500
 ) {
   # Build or reuse desurv_data object
   data <- .as_desurv_data(X, y = y, d = d, k = k)
@@ -289,7 +290,8 @@ desurv_fit <- function(
     best_W, best_H, best_beta,
     hp$alpha, hp$lambda, hp$nu,
     hp$lambdaW, hp$lambdaH,
-    hp$tol, hp$maxit, verbose
+    hp$tol, hp$maxit, verbose,
+    max_iter_beta = max_iter_beta
   )
 
   fit_full$W <- attach_gene_names(fit_full$W)
@@ -304,9 +306,17 @@ desurv_fit <- function(
       W           = fit_full$W,
       H           = fit_full$H,
       beta        = fit_full$beta,
+      loss        = fit_full$loss,
       lossit      = fit_full$lossit,
+      Wlossit     = fit_full$Wlossit,
       slossit     = fit_full$slossit,
       nlossit     = fit_full$nlossit,
+      lossitW      = fit_full$lossitW,
+      slossitW     = fit_full$slossitW,
+      nlossitW     = fit_full$nlossitW,
+      lossitH      = fit_full$lossitH,
+      slossitH     = fit_full$slossitH,
+      nlossitH     = fit_full$nlossitH,
       cindex      = cindex_full,
       cindex_init = cindex_init,
       convergence = isTRUE(fit_full$convergence),
