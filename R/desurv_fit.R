@@ -81,7 +81,8 @@
 #' @param seed Integer or \code{NULL}; random seed used during initialization
 #'   (for the short runs when \code{W0, H0, beta0} are not provided).
 #' @param tol Numeric convergence tolerance for the \strong{full} optimization
-#'   run. This is passed to the underlying optimizer for the final fit.
+#'   run. The optimizer stops when both \code{W} and \code{H} updates have
+#'   cosine distance below \code{tol}.
 #' @param tol_init Numeric convergence tolerance used during the \strong{short
 #'   initialization runs} inside \code{init()}. Ignored if user-specified
 #'   \code{W0, H0, beta0} are provided.
@@ -114,6 +115,11 @@
 #'   \item \code{H}: estimated \eqn{k \times n} coefficient matrix.
 #'   \item \code{beta}: estimated Cox coefficients of length \code{k}.
 #'   \item \code{cindex}: C-index of the final fit on the training data.
+#'   \item \code{lossit}: total objective value per iteration of the full fit.
+#'   \item \code{slossit}: survival loss component per iteration.
+#'   \item \code{nlossit}: NMF loss component per iteration.
+#'   \item \code{Wlossit}: cosine distance between successive \code{W} updates.
+#'   \item \code{Hlossit}: cosine distance between successive \code{H} updates.
 #'   \item \code{cindex_init}: C-index of the best short initialization
 #'         (if multi-start was used), or \code{NA} when user-specified
 #'         initialization is provided.
@@ -309,14 +315,9 @@ desurv_fit <- function(
       loss        = fit_full$loss,
       lossit      = fit_full$lossit,
       Wlossit     = fit_full$Wlossit,
+      Hlossit     = fit_full$Hlossit,
       slossit     = fit_full$slossit,
       nlossit     = fit_full$nlossit,
-      lossitW      = fit_full$lossitW,
-      slossitW     = fit_full$slossitW,
-      nlossitW     = fit_full$nlossitW,
-      lossitH      = fit_full$lossitH,
-      slossitH     = fit_full$slossitH,
-      nlossitH     = fit_full$nlossitH,
       cindex      = cindex_full,
       cindex_init = cindex_init,
       convergence = isTRUE(fit_full$convergence),

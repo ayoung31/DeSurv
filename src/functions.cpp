@@ -514,6 +514,7 @@ List optimize_loss_cpp(const arma::mat& X_in,
    arma::colvec beta = beta0;
 
    arma::mat Wprev = W;
+   arma::mat Hprev = H;
 
    // Sort by increasing time once (apply same permutation to everything)
    arma::uvec tOrder = arma::sort_index(y);
@@ -536,14 +537,11 @@ List optimize_loss_cpp(const arma::mat& X_in,
 
 
    // Iteration bookkeeping
-   double nmfloss      = 1e-6;
-   double nmfloss_prev = nmfloss;
    double eps       = 1.0;
    double epsW = 1.0;
-   double epsW_max = epsW;
+   double epsH = 1.0;
    int    it        = 0;
    bool   flag_nan  = false;
-   double tolW = tol / 100.0;
 
    arma::vec lossit   = arma::zeros<arma::vec>(maxit);
    arma::vec slossit  = arma::zeros<arma::vec>(maxit);
@@ -552,30 +550,20 @@ List optimize_loss_cpp(const arma::mat& X_in,
    arma::vec pwlossit = arma::zeros<arma::vec>(maxit);
    arma::vec phlossit = arma::zeros<arma::vec>(maxit);
    arma::vec Wlossit  = arma::zeros<arma::vec>(maxit);
+   arma::vec Hlossit  = arma::zeros<arma::vec>(maxit);
 
-   arma::vec lossitW   = arma::zeros<arma::vec>(maxit);
-   arma::vec slossitW  = arma::zeros<arma::vec>(maxit);
-   arma::vec nlossitW  = arma::zeros<arma::vec>(maxit);
-
-   arma::vec lossitH   = arma::zeros<arma::vec>(maxit);
-   arma::vec slossitH  = arma::zeros<arma::vec>(maxit);
-   arma::vec nlossitH  = arma::zeros<arma::vec>(maxit);
 
    List l;
 
 
-   while ((eps > tol || epsW_max > tolW) && it < maxit) {
-     nmfloss_prev = nmfloss;
+   while ((epsW > tol || epsH > tol) && it < maxit) {
      Wprev = W;
+     Hprev = H;
      // ---- H update (your function) ----
      update_H_cpp(X, y, d, W, H, n, p, k, Xnorm, alpha, lambdaH);
 
      l = calc_loss_cpp(X, y, d, W, H, beta, n, p, k, n_event, Xnorm,
                        alpha, lambda, nu, lambdaW, lambdaH, sdZ);
-
-     lossitH[it]   =  as<double>(l["loss"]);
-     slossitH[it]  =  as<double>(l["surv_loss"]);
-     nlossitH[it]  =  as<double>(l["nmf_loss"]);
 
      // ---- W update with damping + backtracking ----
      update_W_damped_backtrack(
@@ -587,10 +575,6 @@ List optimize_loss_cpp(const arma::mat& X_in,
 
      l = calc_loss_cpp(X, y, d, W, H, beta, n, p, k, n_event, Xnorm,
                        alpha, lambda, nu, lambdaW, lambdaH, sdZ);
-
-     lossitW[it]   =  as<double>(l["loss"]);
-     slossitW[it]  =  as<double>(l["surv_loss"]);
-     nlossitW[it]  =  as<double>(l["nmf_loss"]);
 
      // ---- β update on Z = (M%X)^T W ----
      {
@@ -613,31 +597,39 @@ List optimize_loss_cpp(const arma::mat& X_in,
      }
 
      double survloss   = as<double>(l["surv_loss"]);
-     nmfloss    = as<double>(l["nmf_loss"]);
+     double nmfloss    = as<double>(l["nmf_loss"]);
      double penaltyW   = as<double>(l["penalty_W"]);
      double penaltyH   = as<double>(l["penalty_H"]);
      double penaltybet = as<double>(l["penalty_beta"]);
 
-     eps = std::abs(nmfloss - nmfloss_prev) / std::max(1e-12, std::abs(nmfloss_prev));
-     epsW = 1 - arma::min(arma::diagvec(Wprev.t() * W));
+     double wnorm = arma::norm(Wprev, "fro") * arma::norm(W, "fro");
+     double hnorm = arma::norm(Hprev, "fro") * arma::norm(H, "fro");
+     double cosW = (wnorm > 0.0) ? arma::dot(arma::vectorise(Wprev),
+                                            arma::vectorise(W)) / wnorm : 1.0;
+     double cosH = (hnorm > 0.0) ? arma::dot(arma::vectorise(Hprev),
+                                            arma::vectorise(H)) / hnorm : 1.0;
+     cosW = std::max(-1.0, std::min(1.0, cosW));
+     cosH = std::max(-1.0, std::min(1.0, cosH));
+
+     epsW = 1.0 - cosW;
+     epsH = 1.0 - cosH;
+     eps = std::max(epsW, epsH);
 
      lossit[it]   = new_loss;
      Wlossit[it]  = epsW;
+     Hlossit[it]  = epsH;
      slossit[it]  = survloss;
      nlossit[it]  = nmfloss;
      pblossit[it] = penaltybet;
      pwlossit[it] = penaltyW;
      phlossit[it] = penaltyH;
 
-     int it_min = std::max(it-4,0);
-     arma::vec range = Wlossit.subvec(it_min,it);
-     epsW_max = arma::max(range);
 
      // Rprintf("iter: %d  eps: %.8e  loss: %.8e  nmf: %.8e  surv: %.8e\n",
      // it, eps, loss, nmfloss, survloss);
       if (verbose) {
-        Rprintf("iter: %d  eps: %.8e  loss: %.8e  nmf: %.8e  surv: %.8e\n",
-                it, eps, new_loss, nmfloss, survloss);
+        Rprintf("iter: %d  eps: %.8e  epsW: %.8e  epsH: %.8e  loss: %.8e  nmf: %.8e  surv: %.8e\n",
+                it, eps, epsW, epsH, new_loss, nmfloss, survloss);
       }
       ++it;
 
@@ -664,14 +656,9 @@ List optimize_loss_cpp(const arma::mat& X_in,
      Named("iter")        = it,
      Named("lossit")      = lossit.head(it),
      Named("Wlossit")     = Wlossit.head(it),
+     Named("Hlossit")     = Hlossit.head(it),
      Named("slossit")     = slossit.head(it),
      Named("nlossit")     = nlossit.head(it),
-     Named("lossitW")      = lossitW.head(it),
-     Named("slossitW")     = slossitW.head(it),
-     Named("nlossitW")     = nlossitW.head(it),
-     Named("lossitH")      = lossitH.head(it),
-     Named("slossitH")     = slossitH.head(it),
-     Named("nlossitH")     = nlossitH.head(it),
      Named("pblossit")    = pblossit.head(it),
      Named("pwlossit")    = pwlossit.head(it),
      Named("phlossit")    = phlossit.head(it),

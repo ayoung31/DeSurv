@@ -26,7 +26,8 @@ desurv_fit(
   parallel_init = FALSE,
   ncores_init = NULL,
   verbose = TRUE,
-  preprocess_info = NULL
+  preprocess_info = NULL,
+  max_iter_beta = 500
 )
 }
 \arguments{
@@ -77,7 +78,8 @@ Defaults to a zero vector when omitted in combination with a custom
 (for the short runs when \code{W0, H0, beta0} are not provided).}
 
 \item{tol}{Numeric convergence tolerance for the \strong{full} optimization
-run. This is passed to the underlying optimizer for the final fit.}
+run. The optimizer stops when both \code{W} and \code{H} updates have
+cosine distance below \code{tol}.}
 
 \item{tol_init}{Numeric convergence tolerance used during the \strong{short
 initialization runs} inside \code{init()}. Ignored if user-specified
@@ -118,6 +120,11 @@ An object of class \code{"desurv_fit"} with components including:
 \item \code{H}: estimated \eqn{k \times n} coefficient matrix.
 \item \code{beta}: estimated Cox coefficients of length \code{k}.
 \item \code{cindex}: C-index of the final fit on the training data.
+\item \code{lossit}: total objective value per iteration of the full fit.
+\item \code{slossit}: survival loss component per iteration.
+\item \code{nlossit}: NMF loss component per iteration.
+\item \code{Wlossit}: cosine distance between successive \code{W} updates.
+\item \code{Hlossit}: cosine distance between successive \code{H} updates.
 \item \code{cindex_init}: C-index of the best short initialization
 (if multi-start was used), or \code{NA} when user-specified
 initialization is provided.

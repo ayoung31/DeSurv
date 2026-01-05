@@ -28,6 +28,9 @@ test_that("desurv_fit produces coherent factors and predictions", {
   expect_true(is.finite(fit$cindex))
   expect_true(fit$cindex >= 0 && fit$cindex <= 1)
   expect_type(fit$convergence, "logical")
+  expect_true(all(c("Wlossit", "Hlossit") %in% names(fit)))
+  expect_length(fit$Wlossit, length(fit$lossit))
+  expect_length(fit$Hlossit, length(fit$lossit))
 
   risks <- predict(fit, newdata = fixture$X, type = "risk")
   expect_length(risks, fixture$n)

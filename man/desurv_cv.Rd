@@ -89,7 +89,8 @@ events and non-events are approximately balanced.}
 and for randomness inside the initialization paths.}
 
 \item{tol}{Numeric convergence tolerance for the full optimizations inside
-\code{\link{desurv_fit}} during CV and in the final refit.}
+\code{\link{desurv_fit}} during CV and in the final refit. Convergence is
+based on cosine distance between successive \code{W} and \code{H} updates.}
 
 \item{maxit}{Integer maximum number of iterations for each full
 optimization inside \code{\link{desurv_fit}} during CV and in the final

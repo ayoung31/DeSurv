@@ -140,7 +140,8 @@
 #'   and for randomness inside the initialization paths.
 #'
 #' @param tol Numeric convergence tolerance for the full optimizations inside
-#'   \code{\link{desurv_fit}} during CV and in the final refit.
+#'   \code{\link{desurv_fit}} during CV and in the final refit. Convergence is
+#'   based on cosine distance between successive \code{W} and \code{H} updates.
 #' @param maxit Integer maximum number of iterations for each full
 #'   optimization inside \code{\link{desurv_fit}} during CV and in the final
 #'   refit.
