@@ -1,0 +1,3 @@
+main:
+  store: ../DeSurv-paper/_targets
+  script: ../DeSurv-paper/_targets.R

@@ -1,0 +1,51 @@
+---
+title: "DeSurv functions.cpp changes from 1965571 to d2817fd"
+output: github_document
+---
+
+## Scope
+This document compares only `src/functions.cpp` between commit `1965571` and the current commit (`d2817fd`). At `1965571`, `src/functions.cpp` did not exist; the file is **newly introduced** in the current codebase. The notes below describe the conceptual additions and their likely impact.
+
+## What was added (conceptual)
+
+### Native C++ backend for model fitting
+A full C++ implementation of the DeSurv optimizer was introduced, including:
+- Cox partial likelihood statistics with log-sum-exp stabilization and explicit handling of tied event times.
+- NMF factor updates for `H` (multiplicative update with L2 penalty and epsilon floor).
+- A combined objective function that blends NMF reconstruction with Cox survival loss and elastic-net penalties.
+
+### Stable Cox statistics and tie handling
+- `cox_suffix_stats_full()` computes gradient and a diagonal Hessian approximation using centered risk sums.
+- Tied event times are grouped so the risk set terms are shared across ties (Breslow-style handling).
+- Additional cumulative terms are tracked to improve stability of the Hessian approximation.
+
+### W update with damping and backtracking
+- `update_W_damped_backtrack()` mixes NMF and Cox gradients, scales the Cox contribution, and clamps the multiplicative update ratio.
+- Backtracking is used to ensure the updated parameters reduce the objective.
+- `W`, `H`, and `beta` are jointly rescaled to keep the linear predictor invariant, and `sdZ` is recomputed to keep penalties consistent.
+
+### Beta update via coordinate descent
+- `update_beta_cpp()` performs coordinate descent on standardized `Z = X^T W` with elastic-net penalties.
+- A backtracking step protects against non-finite values or decreases in penalized survival objective.
+
+### Alternating optimization loop and diagnostics
+- `optimize_loss_cpp()` runs an alternating update loop over `H`, `W`, and `beta`.
+- Convergence is based on cosine distance between successive `W` and `H` iterates (not just loss deltas).
+- Iteration diagnostics include total loss and component losses, as well as per-iteration cosine distances.
+
+## Impact (expected)
+
+### Performance
+- Moves the DeSurv core optimization into C++/Armadillo, which should substantially reduce runtime for fitting, CV, and BO workflows.
+
+### Numerical stability
+- Log-sum-exp risk set calculations, tie handling, clamping, epsilon floors, and backtracking reduce NaN/Inf issues.
+- Standardization and penalty-aware updates stabilize `beta` and the survival component.
+
+### Optimization behavior
+- The new convergence criterion (cosine distance on `W`/`H`) changes stopping behavior relative to loss-only checks.
+- `Xnorm`-scaled losses and penalties alter the effective weighting of reconstruction vs. survival components.
+
+### Diagnostics surface
+- Exposes detailed loss components and convergence flags that upstream R wrappers can report or use in CV/BO diagnostics.
+

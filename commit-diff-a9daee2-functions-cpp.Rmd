@@ -1,0 +1,56 @@
+---
+title: "DeSurv functions.cpp changes from a9daee2 to d2817fd"
+output: github_document
+---
+
+## Scope
+This document compares only `src/functions.cpp` between commit `a9daee2` and the current commit (`d2817fd`). It summarizes conceptual changes and their likely impact on model behavior and stability.
+
+## Conceptual changes
+
+### 1) Cox statistics now handle ties and improved curvature
+- `cox_suffix_stats_full()` now takes event times (`y`) and groups tied times so the shared risk set is used across ties (Breslow-style handling).
+- The risk-sum is tracked with a centered log representation (`logS0_full` and `logS0`) to improve numerical stability.
+- A new cumulative term `B` is introduced to improve the diagonal Hessian approximation (`w = eeta % h - eeta^2 % B`).
+
+### 2) Loss definition and scaling were redesigned
+- The mask matrix `M` was removed entirely; reconstruction is now computed on the full `X`.
+- NMF loss is scaled by `Xnorm = sum(X^2)` instead of `s = sum(M)`, changing the relative weighting of reconstruction vs. survival components.
+- The H penalty is folded into the NMF block, and the survival loss now subtracts the beta penalty directly before weighting by `alpha`.
+
+### 3) H update now uses Xnorm scaling and positivity flooring
+- `update_H_cpp()` now uses `Xnorm` in the penalty scaling and enforces an epsilon floor on `H` to prevent zeros or negative drift.
+
+### 4) W update stabilization changes
+- `update_W_damped_backtrack()` now uses `Xnorm` and no mask, and clamps multiplicative ratios to `[0.2, 5.0]` for stability.
+- Cox gradient scaling is capped (min of `gn/gc` and `1e6`) to avoid extreme survival gradient dominance.
+- Backtracking is more aggressive (`rho=0.9`, `max_backtracks=30`) and recomputes `sdZ` after normalization to keep the loss consistent.
+
+### 5) Beta update logic is more stable
+- Coordinate descent now maintains a working response and residual (`r = g`) to update `eta` stably across coordinates.
+- A new `penalized_surv_loss()` helper drives a backtracking step to prevent beta updates that reduce the penalized survival objective or create non-finite values.
+
+### 6) Convergence criteria changed
+- Convergence no longer uses relative loss difference. It now uses cosine distance between successive `W` and `H` updates (`epsW`, `epsH`).
+- Iteration outputs now include `Wlossit` and `Hlossit` histories.
+
+### 7) Function signatures expanded and made explicit
+- Many functions now accept explicit `n`, `p`, `k`, `n_event`, and `Xnorm` instead of recomputing or inferring them.
+- Beta and loss updates now pass `y` explicitly to support tie handling.
+
+## Impact (expected)
+
+### Numerical stability
+- Tie-aware Cox stats, re-centered risk sums, and improved Hessian approximations reduce NaN/Inf failures.
+- Clamped multiplicative updates and epsilon flooring keep `W`/`H` within safe bounds.
+
+### Optimization behavior
+- The new loss scaling (`Xnorm`) changes the relative weight of reconstruction vs. survival components, so fitted factors may shift compared to `a9daee2`.
+- The convergence criterion based on cosine distance may stop earlier or later than loss-only criteria, affecting runtime and fit quality.
+
+### Interpretability and diagnostics
+- Additional per-iteration diagnostics (`Wlossit`, `Hlossit`) make it easier to diagnose whether convergence is driven by factor stabilization or loss decrease.
+
+### API and compatibility
+- The explicit function signatures and removal of `M` imply upstream callers must pass additional arguments and cannot rely on masked reconstruction within C++.
+

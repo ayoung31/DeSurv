@@ -1,0 +1,146 @@
+---
+title: "DeSurv changes from a364670 to d2817fd"
+output: github_document
+---
+
+## Scope
+This document summarizes conceptual differences between commit `a364670` and `d2817fd` in the DeSurv repository. It emphasizes the core model/optimizer updates in `src/functions.cpp` and then covers every other change in the repo (R API, preprocessing, CV, Bayesian optimization, docs, and tests).
+
+## Core model and optimization changes (src/functions.cpp)
+
+### Cox partial likelihood and tie handling
+- `cox_suffix_stats_full()` now takes the event times (`y`) in addition to the linear predictor and event indicators.
+- Tied event times are handled via group starts (`gstart`) so the risk set and log-sum-exp are shared across ties (Breslow-style handling).
+- The cumulative hazard terms are re-centered to improve numerical stability; the log-risk (`logS0`) is now tracked both in absolute (`logS0_full`) and centered form.
+- A new cumulative term `B` (sum of `d / S0^2`) is introduced to update the diagonal Hessian approximation (`w = eeta % h - eeta^2 % B`).
+
+### Loss definition, scaling, and penalties
+- NMF loss is now scaled by `Xnorm = sum(X^2)` instead of `n * p`, and the H penalty is folded into the NMF component to keep weighting consistent.
+- The survival loss now explicitly includes the penalty on `beta`, so the total loss is constructed as:
+  - `(1 - alpha) * (nmf_loss + lambdaH * penalty_H) - alpha * surv_loss + lambdaW * penalty_W`.
+- `calc_loss_cpp()` now receives `y` (for ties) and `Xnorm` (for consistent scaling).
+
+### H updates
+- `update_H_cpp()` now uses `Xnorm` in its regularization scaling and enforces a small positive floor (`eps`) on `H` after updates.
+
+### W updates and stabilization
+- `update_W_damped_backtrack()` now uses `Xnorm` for scaling both the NMF gradient and the Cox gradient contribution.
+- The Cox contribution scaling is capped (`min(gn/gc, 1e6)`) to avoid over-amplifying the survival gradient.
+- The multiplicative ratio update `R` is now clamped to `[0.2, 5.0]` to prevent extreme step sizes.
+- Backtracking steps recompute `sdZ` after normalization to keep the loss consistent and stable.
+- Backtracking is more aggressive (`rho = 0.9`, `max_backtracks = 30`) and now ensures the updated parameters decrease the objective before acceptance.
+
+### Beta updates
+- Coordinate descent updates now use a working response (`z`) and a maintained residual term (`r`) for numerically stable updates.
+- The beta update uses the revised tie-aware Cox stats and a new `penalized_surv_loss()` helper.
+- A backtracking step was added to prevent updates that decrease the penalized survival objective or produce non-finite values.
+
+### Convergence criteria and diagnostics
+- Convergence no longer relies on relative loss differences. Instead, cosine distance between successive `W` and `H` updates is used (`epsW`, `epsH`), with `eps = max(epsW, epsH)`.
+- Iteration histories now include `Wlossit` and `Hlossit` in addition to `lossit` and component losses.
+- Final outputs in the C++ optimizer now expose these new diagnostics for downstream R functions.
+
+## R interface and workflow changes
+
+### `R/desurv_fit.R`
+- Custom initialization now allows **only `W0`** to be supplied. `H0` is inferred via NNLS and `beta0` defaults to zeros.
+- Added `max_iter_beta` argument for controlling beta CD iterations.
+- Gene names are attached to `W` when absent, and propagated through outputs.
+- `preprocess_info` can now be stored on the fit object to support prediction-time preprocessing.
+- Output now includes `lossit`, `Wlossit`, `Hlossit`, `slossit`, `nlossit`, and `convergence` flags.
+
+### `R/validate_input.R`
+- Custom init validation now accepts `W0` alone, checks non-negativity, computes `H0` via NNLS when missing, and defaults `beta0` to zeros.
+
+### `R/consensus_seed.R` (new)
+- Adds `desurv_consensus_seed()` to aggregate top genes across multiple fits and build a deterministic consensus `W0` and NNLS-derived `H0`.
+- Includes helpers for consensus matrix construction, clustering, NNLS solves, and row alignment.
+
+### `R/get_top_genes.R`
+- `desurv_get_top_genes()` now builds `theta = W %*% beta` and normalizes it when using a top-gene subset, reducing NaN risk.
+- Prediction using top genes now uses the normalized `theta` directly.
+
+### `R/preprocess_data.R`
+- Quantile normalization now stores the training target via `normalize.quantiles.determine.target()` and reuses it for future normalization.
+- Returns `transform_target` and `method_trans_train` for downstream prediction.
+
+### `R/predict_methods.R`
+- Prediction now applies stored preprocessing metadata (rank or quantile normalization) to raw new data.
+- If rownames are missing but the gene counts match, training gene names are assigned automatically.
+- Quantile normalization uses the stored target and maintains gene order consistently.
+
+### Cross-validation pipeline (`R/desurv_cv.R`, `R/cv_cold.R`, `R/cv_warm.R`, `R/cv_helpers.R`)
+- CV now supports per-fold preprocessing: training folds define gene filters and transformation targets that are applied to validation folds.
+- Added `.desurv_prepare_fold_payload()` and `.desurv_apply_validation_transform()` to guarantee fold-level alignment.
+- CV diagnostics are now tracked for each fold/alpha (train convergence, NaN flags, validation event counts, non-finite LPs).
+- `desurv_cv()` filters out hyperparameter combinations that produced NaN issues in any fold and reports this in the summary.
+- When `preprocess = TRUE`, the final refit now recomputes preprocessing on the full dataset and stores the metadata for prediction.
+
+### Bayesian optimization (`R/desurv_bayesopt.R`, `R/desurv_cv_bayesopt.R`)
+- Added `bo_history` for warm-starting BO runs from prior evaluations (including compatible data frames).
+- Added `bo_fixed` to fix a subset of parameters while still optimizing others.
+- New helper utilities to normalize parameter values, build stable keys, and import prior evaluation histories.
+- BO history now resets rownames to avoid confusing evaluation IDs.
+- `desurv_cv_bayesopt()` stores per-evaluation CV diagnostics for downstream inspection.
+
+### BO refinement utilities (`R/desurv_bo_refine.R`, new)
+- `desurv_bo_refine_bounds()` shrinks bounds around top-k evaluations, optionally using parameter importance.
+- `desurv_bo_refine_diagnostics()` summarizes multi-run refinement sequences.
+- `desurv_cv_bayesopt_refine()` orchestrates coarse-to-fine BO refinements until improvement plateaus.
+
+### `R/RcppExports.R`
+- Updated signatures to match the new C++ API (`y` and `Xnorm` arguments, revised beta updates).
+
+## Documentation and namespace updates
+- `NAMESPACE` now exports the new consensus and BO refinement functions and imports `stats::hclust`, `stats::cutree`, `stats::as.dist`.
+- Updated man pages reflect new parameters (`bo_history`, `bo_fixed`, `preprocess_info`, `max_iter_beta`) and new outputs (`Wlossit`, `Hlossit`, diagnostics).
+- Added new Rd files for `desurv_consensus_seed`, `desurv_bo_refine_bounds`, `desurv_bo_refine_diagnostics`, and `desurv_cv_bayesopt_refine`.
+
+## Test coverage updates
+- Added new tests for consensus seeding, BO refinement, fold-level preprocessing, and prediction-time preprocessing.
+- Extended BO tests to cover warm-starting from previous runs and factor histories.
+- Updated fit workflow tests to validate new outputs (`Wlossit`, `Hlossit`, `convergence`) and relaxed the rowname requirement when gene counts match.
+
+## File-by-file change log
+
+### Core C++
+- `src/functions.cpp`: tie-aware Cox stats, new loss scaling, stabilized W/H/beta updates, new convergence diagnostics.
+- `src/RcppExports.cpp`: updated exported signatures for new arguments.
+
+### R API and utilities
+- `R/desurv_fit.R`: custom init flexibility, preprocess metadata, new diagnostics, `max_iter_beta`.
+- `R/validate_input.R`: W0-only init validation and NNLS H0 inference.
+- `R/consensus_seed.R`: **new** consensus seeding workflow and NNLS helpers.
+- `R/get_top_genes.R`: normalized theta-based prediction for top-gene subsets.
+- `R/preprocess_data.R`: quantile target preservation and preprocessing metadata.
+- `R/predict_methods.R`: prediction-time preprocessing using stored metadata.
+- `R/desurv_cv.R`: diagnostics integration, NaN filtering, preprocess-aware refit.
+- `R/cv_helpers.R`: **new** fold preprocessing helpers for validation transforms.
+- `R/cv_cold.R`: per-fold preprocessing, diagnostics, and payload caching.
+- `R/cv_warm.R`: per-fold preprocessing, diagnostics, and payload caching.
+- `R/desurv_bayesopt.R`: warm-start history ingestion, fixed params, stable keys.
+- `R/desurv_cv_bayesopt.R`: warm-start history, fixed params, diagnostics per evaluation.
+- `R/desurv_bo_refine.R`: **new** BO refinement and diagnostics utilities.
+- `R/RcppExports.R`: updated R wrappers for new C++ signatures.
+
+### Documentation
+- `man/desurv_fit.Rd`: new arguments and diagnostics fields.
+- `man/desurv_cv.Rd`: diagnostics and preprocessing updates.
+- `man/desurv_bayesopt.Rd`: `bo_history` and warm-start behavior.
+- `man/desurv_cv_bayesopt.Rd`: `bo_fixed`, `bo_history`, and diagnostics.
+- `man/desurv_cv_bayesopt_refine.Rd`: **new** refinement workflow docs.
+- `man/desurv_consensus_seed.Rd`: **new** consensus seeding docs.
+- `man/desurv_bo_refine_bounds.Rd`: **new** bounds refinement docs.
+- `man/desurv_bo_refine_diagnostics.Rd`: **new** diagnostics docs.
+- `man/dot-desurv_cv_grid.Rd`: updated to reflect CV changes.
+- `man/dot-desurv_cv_grid_warmstart.Rd`: updated to reflect warm-start changes.
+
+### Tests
+- `tests/testthat/test-fit-workflow.R`: new convergence diagnostics + rowname handling.
+- `tests/testthat/test-bayesopt.R`: warm-start coverage for BO.
+- `tests/testthat/test-cv-bayesopt.R`: warm-start coverage for CV BO.
+- `tests/testthat/test-consensus-seed.R`: **new** consensus seeding tests.
+- `tests/testthat/test-bo-refine.R`: **new** refinement tests.
+- `tests/testthat/test-fold_preprocess.R`: **new** fold-level preprocessing tests.
+- `tests/testthat/test-predict-preprocess.R`: **new** prediction preprocessing tests.
+
