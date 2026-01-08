@@ -52,6 +52,11 @@
 #'   filtering).
 #' @param method_trans_train Character string: `"rank"`, `"quant"`, or `"none"`
 #'   describing the per-sample transformation applied after filtering.
+#' @param transform_target Optional quantile target from training preprocessing.
+#'   When provided and `method_trans_train = "quant"`, this target is reused
+#'   instead of computing a new one from the data. This prevents data leakage
+#'   when preprocessing validation datasets. Can be a list with `values` and
+#'   `genes` components (as returned by this function) or a numeric vector.
 #' @param verbose Logical; if `TRUE`, emit preprocessing progress messages.
 #'
 #' @return A list with components
@@ -72,6 +77,7 @@ preprocess_data <- function(
     ngene              = 1000,
     genes              = NULL,
     method_trans_train = c("rank", "quant", "none"),
+    transform_target   = NULL,
     verbose            = TRUE
 ) {
   method_trans_train <- match.arg(method_trans_train)
@@ -212,7 +218,8 @@ preprocess_data <- function(
     X[non_finite_mask] <- 0
   }
 
-  transform_target <- NULL
+  # Finding 7 fix: Allow reusing an existing transform_target for validation data
+  final_transform_target <- NULL
   if (method_trans_train == "rank") {
     X_rank <- apply(X, 2, rank, ties.method = "average")
     dim(X_rank) <- dim(X)
@@ -223,18 +230,33 @@ preprocess_data <- function(
       stop("Package `preprocessCore` is required for quantile normalization.")
     }
     gene_order <- rownames(X)
-    # Store the training target and gene order for prediction-time reuse.
-    target_values <- preprocessCore::normalize.quantiles.determine.target(X)
-    transform_target <- .desurv_make_quant_target(target_values, gene_order)
+
+    # Finding 7 fix: Reuse existing target if provided, otherwise compute new one
+    if (!is.null(transform_target)) {
+      # Unpack and validate the provided target
+      target_info <- .desurv_unpack_quant_target(transform_target, fallback_genes = gene_order)
+      if (is.null(target_info$values)) {
+        stop("Provided `transform_target` has no values.")
+      }
+      final_transform_target <- .desurv_make_quant_target(target_info$values, gene_order)
+      if (isTRUE(verbose)) {
+        message("Using provided quantile target (validation mode).")
+      }
+    } else {
+      # Compute new target from training data
+      target_values <- preprocessCore::normalize.quantiles.determine.target(X)
+      final_transform_target <- .desurv_make_quant_target(target_values, gene_order)
+    }
+
     X <- preprocessCore::normalize.quantiles.use.target(
       X,
-      target = transform_target$values
+      target = final_transform_target$values
     )
-    if (!is.null(transform_target$genes)) {
-      if (nrow(X) != length(transform_target$genes)) {
+    if (!is.null(final_transform_target$genes)) {
+      if (nrow(X) != length(final_transform_target$genes)) {
         stop("Quantile normalization changed gene dimensions unexpectedly.")
       }
-      rownames(X) <- transform_target$genes
+      rownames(X) <- final_transform_target$genes
     }
   } else if (method_trans_train != "none") {
     stop("Unsupported transformation specified.")
@@ -255,7 +277,7 @@ preprocess_data <- function(
     sampInfo          = data.frame_samp,
     featInfo          = rownames(X),
     samp_keeps        = keep_idx,
-    transform_target  = transform_target,
+    transform_target  = final_transform_target,
     method_trans_train = method_trans_train
   )
 }

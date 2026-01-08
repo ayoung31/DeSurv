@@ -469,3 +469,174 @@ test_that("predict handles non-finite values in newdata for preprocessing path",
     "cannot contain NA, NaN, or Inf"
   )
 })
+
+# =============================================================================
+# Finding 7: Validation preprocessing reuses training transform_target
+# =============================================================================
+
+test_that("preprocess_data() accepts transform_target parameter", {
+  skip_if_not_installed("preprocessCore")
+
+  data <- make_valid_preprocess_data()
+
+  # First preprocess to get a target
+  train_result <- preprocess_data(
+    X = data$X, y = data$y, d = data$d, dataset = data$dataset,
+    method_trans_train = "quant", verbose = FALSE
+  )
+
+  expect_true(!is.null(train_result$transform_target))
+  expect_true(!is.null(train_result$transform_target$values))
+
+  # Create separate "validation" data
+  set.seed(999)
+  val_X <- matrix(abs(rnorm(10 * 10)) + 0.1, nrow = 10, ncol = 10)
+  rownames(val_X) <- paste0("gene", seq_len(10))
+  colnames(val_X) <- paste0("val_sample", seq_len(10))
+  val_y <- runif(10, 1, 100)
+  val_d <- rbinom(10, 1, 0.6)
+  if (sum(val_d) < 2) val_d[1:2] <- 1
+  val_dataset <- rep("VAL", 10)
+
+  # Preprocess validation with training target
+  val_result <- preprocess_data(
+    X = val_X, y = val_y, d = val_d, dataset = val_dataset,
+    method_trans_train = "quant",
+    transform_target = train_result$transform_target,
+    verbose = FALSE
+  )
+
+  expect_true(!is.null(val_result$ex))
+  expect_true(!is.null(val_result$transform_target))
+})
+
+test_that("preprocess_data() uses provided transform_target instead of computing new one", {
+  skip_if_not_installed("preprocessCore")
+
+  data <- make_valid_preprocess_data()
+
+  # Get training target
+  train_result <- preprocess_data(
+    X = data$X, y = data$y, d = data$d, dataset = data$dataset,
+    method_trans_train = "quant", verbose = FALSE
+  )
+  train_target <- train_result$transform_target
+
+  # Create different validation data
+  set.seed(123)
+  val_X <- matrix(abs(rnorm(10 * 10)) * 100, nrow = 10, ncol = 10)  # Different scale
+  rownames(val_X) <- paste0("gene", seq_len(10))
+  colnames(val_X) <- paste0("val_sample", seq_len(10))
+  val_y <- runif(10, 1, 100)
+  val_d <- rbinom(10, 1, 0.6)
+  if (sum(val_d) < 2) val_d[1:2] <- 1
+  val_dataset <- rep("VAL", 10)
+
+  # Preprocess WITH training target
+  val_with_target <- preprocess_data(
+    X = val_X, y = val_y, d = val_d, dataset = val_dataset,
+    method_trans_train = "quant",
+    transform_target = train_target,
+    verbose = FALSE
+  )
+
+  # Preprocess WITHOUT training target (computes new target)
+  val_without_target <- preprocess_data(
+    X = val_X, y = val_y, d = val_d, dataset = val_dataset,
+    method_trans_train = "quant",
+    verbose = FALSE
+  )
+
+  # Results should be different because they use different targets
+  # (unless by coincidence the data produces identical targets)
+  expect_false(identical(val_with_target$ex, val_without_target$ex))
+})
+
+test_that("preprocess_data() with transform_target emits message when verbose", {
+  skip_if_not_installed("preprocessCore")
+
+  data <- make_valid_preprocess_data()
+
+  # Get training target
+  train_result <- preprocess_data(
+    X = data$X, y = data$y, d = data$d, dataset = data$dataset,
+    method_trans_train = "quant", verbose = FALSE
+  )
+
+  # Validation preprocessing should emit message about using provided target
+  expect_message(
+    preprocess_data(
+      X = data$X, y = data$y, d = data$d, dataset = data$dataset,
+      method_trans_train = "quant",
+      transform_target = train_result$transform_target,
+      verbose = TRUE
+    ),
+    "Using provided quantile target"
+  )
+})
+
+test_that("preprocess_data() errors when transform_target has no values", {
+  skip_if_not_installed("preprocessCore")
+
+  data <- make_valid_preprocess_data()
+
+  # Provide invalid target (no values)
+  expect_error(
+    preprocess_data(
+      X = data$X, y = data$y, d = data$d, dataset = data$dataset,
+      method_trans_train = "quant",
+      transform_target = list(genes = paste0("gene", 1:10)),  # No values!
+      verbose = FALSE
+    ),
+    "has no values"
+  )
+})
+
+test_that("preprocess_data() transform_target is ignored when method is not quant", {
+  data <- make_valid_preprocess_data()
+
+  # Create a fake target
+  fake_target <- list(values = rep(0.5, 10), genes = paste0("gene", 1:10))
+
+  # With rank transform, target should be ignored (no error or change)
+  result_rank <- preprocess_data(
+    X = data$X, y = data$y, d = data$d, dataset = data$dataset,
+    method_trans_train = "rank",
+    transform_target = fake_target,
+    verbose = FALSE
+  )
+
+  # Should succeed and transform_target should be NULL (rank doesn't use it)
+  expect_true(is.null(result_rank$transform_target))
+
+  # Same for "none"
+  result_none <- preprocess_data(
+    X = data$X, y = data$y, d = data$d, dataset = data$dataset,
+    method_trans_train = "none",
+    transform_target = fake_target,
+    verbose = FALSE
+  )
+  expect_true(is.null(result_none$transform_target))
+})
+
+test_that("preprocess_data() accepts numeric vector as transform_target", {
+  skip_if_not_installed("preprocessCore")
+
+  data <- make_valid_preprocess_data()
+
+  # Get training target
+  train_result <- preprocess_data(
+    X = data$X, y = data$y, d = data$d, dataset = data$dataset,
+    method_trans_train = "quant", verbose = FALSE
+  )
+
+  # Pass just the values (numeric vector) as target
+  expect_no_error({
+    val_result <- preprocess_data(
+      X = data$X, y = data$y, d = data$d, dataset = data$dataset,
+      method_trans_train = "quant",
+      transform_target = train_result$transform_target$values,  # Just the values
+      verbose = FALSE
+    )
+  })
+})
