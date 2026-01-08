@@ -46,8 +46,12 @@ coef.desurv_fit <- function(object, ...) {
   }
 
   if (inherits(newdata, "desurv_data")) {
-    # Warn if model has preprocessing metadata but desurv_data bypasses it
-    if (!is.null(preprocess_meta) && !is.null(preprocess_meta$method_trans_train)) {
+    # Finding 4 fix: Warn if model has ANY preprocessing metadata (transforms or genes)
+    # that desurv_data would bypass
+    has_transform <- !is.null(preprocess_meta$method_trans_train) &&
+                     preprocess_meta$method_trans_train != "none"
+    has_gene_filter <- !is.null(preprocess_meta$genes) && length(preprocess_meta$genes) > 0L
+    if (!is.null(preprocess_meta) && (has_transform || has_gene_filter)) {
       warning(
         "Passing a desurv_data object bypasses preprocessing transforms. ",
         "If newdata was not preprocessed the same way as training data, ",
@@ -95,7 +99,11 @@ coef.desurv_fit <- function(object, ...) {
   }
 
   if (!is.null(preprocess_meta)) {
-    X[is.na(X)] <- 0
+    # Handle any non-finite values consistently (NA, NaN, Inf)
+    non_finite_mask <- !is.finite(X)
+    if (any(non_finite_mask)) {
+      X[non_finite_mask] <- 0
+    }
     method <- preprocess_meta$method_trans_train
     if (isTRUE(method == "rank")) {
       X_rank <- apply(X, 2, rank, ties.method = "average")

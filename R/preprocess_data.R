@@ -86,6 +86,39 @@ preprocess_data <- function(
     stop("`X`, `y`, `d`, and `dataset` must have matching sample counts.")
   }
 
+
+  # Finding 1 fix: Validate y, d, and dataset
+  # Validate y: must be numeric, finite, positive, no NA
+  if (!is.numeric(y)) {
+    stop("`y` must be a numeric vector of survival times.", call. = FALSE)
+  }
+  if (anyNA(y)) {
+    stop("`y` cannot contain NA values.", call. = FALSE)
+  }
+  if (!all(is.finite(y))) {
+    stop("`y` cannot contain Inf or NaN values.", call. = FALSE)
+  }
+  if (any(y <= 0)) {
+    stop("`y` (survival times) must be positive (> 0).", call. = FALSE)
+  }
+
+  # Validate d: must be numeric or integer, values in {0, 1}, no NA
+  if (!is.numeric(d) && !is.integer(d)) {
+    stop("`d` must be a numeric or integer event indicator vector.", call. = FALSE)
+  }
+  if (anyNA(d)) {
+    stop("`d` cannot contain NA values.", call. = FALSE)
+  }
+  d_unique <- unique(d)
+  if (!all(d_unique %in% c(0, 1))) {
+    stop("`d` must contain only 0 (censored) and 1 (event) values.", call. = FALSE)
+  }
+
+  # Validate dataset: no NA
+  if (anyNA(dataset)) {
+    stop("`dataset` cannot contain NA values.", call. = FALSE)
+  }
+
   # Normalize sample subset indices
   normalize_samp_idx <- function(idx, n, sample_names) {
     if (is.logical(idx)) {
@@ -151,10 +184,33 @@ preprocess_data <- function(
     if (length(keep_genes) == 0L) {
       stop("None of the supplied `genes` are present in `X`.")
     }
+    # Finding 6 fix: Warn when explicit genes are dropped
+    dropped_genes <- setdiff(genes, keep_genes)
+    if (length(dropped_genes) > 0L) {
+      warning(
+        sprintf(
+          "%d of %d requested genes not found in X and were dropped: %s%s",
+          length(dropped_genes),
+          length(genes),
+          paste(head(dropped_genes, 5L), collapse = ", "),
+          if (length(dropped_genes) > 5L) ", ..." else ""
+        ),
+        call. = FALSE
+      )
+    }
     X <- X[keep_genes, , drop = FALSE]
   }
 
-  X[is.na(X)] <- 0
+  # Finding 2 fix: Replace all non-finite values (NA, NaN, Inf, -Inf) with 0
+  # This prevents corrupted variance calculations and quantile targets
+  non_finite_mask <- !is.finite(X)
+  if (any(non_finite_mask)) {
+    n_nonfinite <- sum(non_finite_mask)
+    if (isTRUE(verbose)) {
+      message(sprintf("Replaced %d non-finite values (NA/NaN/Inf) with 0.", n_nonfinite))
+    }
+    X[non_finite_mask] <- 0
+  }
 
   transform_target <- NULL
   if (method_trans_train == "rank") {

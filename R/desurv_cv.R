@@ -443,6 +443,13 @@ desurv_cv <- function(
       method_trans_train = method_trans_train,
       verbose            = verbose
     )
+    # Finding 3 fix: Update preprocess_info BEFORE passing to desurv_fit()
+    # This ensures the fit object receives complete preprocessing metadata,
+    # including genes and transform_target needed for predict() with quant method
+    if (!is.null(preprocess_info)) {
+      preprocess_info$genes <- data_final$featInfo
+      preprocess_info$transform_target <- data_final$transform_target
+    }
     fit_best <- desurv_fit(
       X       = data_final$ex,
       y       = data_final$sampInfo$time,
@@ -458,10 +465,6 @@ desurv_cv <- function(
       verbose = verbose,
       preprocess_info = preprocess_info
     )
-    if (!is.null(preprocess_info)) {
-      preprocess_info$genes <- data_final$featInfo
-      preprocess_info$transform_target <- data_final$transform_target
-    }
   } else {
     fit_best <- desurv_fit(
       X       = X,

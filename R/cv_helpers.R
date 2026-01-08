@@ -213,8 +213,27 @@
     samp_tr   <- proc$sampInfo
 
     genes_keep <- proc$featInfo
+
+    # Finding 5 fix: Check for missing genes before subsetting and warn
+    missing_in_val <- setdiff(genes_keep, rownames(X_val))
+    if (length(missing_in_val) > 0L) {
+      warning(
+        sprintf(
+          "CV fold: %d genes from training not found in validation set and will be zero-filled: %s%s",
+          length(missing_in_val),
+          paste(head(missing_in_val, 3L), collapse = ", "),
+          if (length(missing_in_val) > 3L) ", ..." else ""
+        ),
+        call. = FALSE
+      )
+    }
+
     X_val_proc <- X_val[genes_keep, , drop = FALSE]
-    X_val_proc[is.na(X_val_proc)] <- 0
+    # Finding 5 continued: Replace all non-finite values, not just NA
+    non_finite_mask <- !is.finite(X_val_proc)
+    if (any(non_finite_mask)) {
+      X_val_proc[non_finite_mask] <- 0
+    }
     X_val_proc <- .desurv_apply_validation_transform(
       X_val_proc,
       method = method_trans_train,
