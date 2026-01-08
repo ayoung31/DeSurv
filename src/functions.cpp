@@ -300,6 +300,7 @@ double lasso(double z, double l1, double l2, double v) {
 // X: n×p (rows already sorted by time); d: events (n×1, 0/1)
 // lambda: overall penalty; a: starting beta (p×1)
 // m: per-feature penalty multipliers (p×1), nu: elastic-net mixing in your API
+// hessian_clamp_count: reference to track how many times Hessian clamping was triggered
 arma::vec cdfit_cox_dh_one_lambda(const arma::mat& X,
                                   const arma::vec& y,
                                   const arma::vec& d,
@@ -311,11 +312,13 @@ arma::vec cdfit_cox_dh_one_lambda(const arma::mat& X,
                                   double eps,
                                   int max_iter,
                                   const arma::vec& m,
-                                  double nu)
+                                  double nu,
+                                  int& hessian_clamp_count)
 {
 
   arma::vec beta = a;                 // current coefficients
   arma::vec eta  = X * beta;          // linear predictor
+  hessian_clamp_count = 0;            // reset counter
 
   int tot_iter = 0;
   while (tot_iter < max_iter) {
@@ -327,6 +330,11 @@ arma::vec cdfit_cox_dh_one_lambda(const arma::mat& X,
     const arma::vec& w = cs.w;        // diag Hessian approx
 
     // working response for the quadratic surrogate
+    // Track when clamping is triggered (w has values below threshold)
+    arma::uvec w_clamped = arma::find(w < 1e-12);
+    if (w_clamped.n_elem > 0) {
+      hessian_clamp_count += w_clamped.n_elem;
+    }
     arma::vec z = eta + g / arma::clamp(w, 1e-12, arma::datum::inf);
 
     // maintain r = w*(z - eta); initially equals g
@@ -343,8 +351,12 @@ arma::vec cdfit_cox_dh_one_lambda(const arma::mat& X,
       const double xwr = arma::dot(xj, r);                 // = sum_i x_ij * g_i
       const double xwx = arma::dot(w, xj % xj);            // = sum_i w_i * x_ij^2
 
-      // guard against zero curvature
-      const double v = std::max(xwx / n_event, 1e-12);           // curvature (per glmnet-style scaling)
+      // guard against zero curvature - track when this triggers
+      const double raw_v = xwx / n_event;
+      if (raw_v < 1e-12) {
+        hessian_clamp_count++;
+      }
+      const double v = std::max(raw_v, 1e-12);           // curvature (per glmnet-style scaling)
       const double u = (xwr / n_event) + v * beta[j];            // unpenalized update point
 
       // penalties (your API: l1 = λ * m_j * nu, l2 = λ * m_j * (1 - nu))
@@ -422,11 +434,22 @@ arma::vec update_beta_cpp(const arma::mat& Z,     // Z = X^T W
   arma::vec penalty_factor = arma::ones<arma::vec>(Z_keep.n_cols);
 
   // cdfit_cox_dh_one_lambda MUST be the stabilized version (log-sum-exp), as discussed.
+  // Track Hessian clamping for numerical diagnostics
+  int hessian_clamp_count = 0;
   arma::vec beta_cd = cdfit_cox_dh_one_lambda(
     Z_keep, y, delta, beta0_keep,
     n, p, n_event,
     lambda, eps, max_iter,
-    penalty_factor, nu);
+    penalty_factor, nu, hessian_clamp_count);
+
+  // Warn if excessive Hessian clamping occurred (indicates numerical instability)
+  // Threshold: more than 10% of (iterations * samples) required clamping
+  int expected_ops = max_iter * n;
+  if (hessian_clamp_count > expected_ops / 10) {
+    Rcpp::warning("Cox CD: excessive Hessian clamping detected (%d clamps). "
+                  "This may indicate near-constant survival times or extreme linear predictors.",
+                  hessian_clamp_count);
+  }
 
   arma::vec beta_full = arma::zeros<arma::vec>(Z.n_cols);
   arma::vec bb = beta_cd / sd_keep.t();
@@ -569,6 +592,13 @@ List optimize_loss_cpp(const arma::mat& X_in,
      // ---- H update (your function) ----
      update_H_cpp(X, y, d, W, H, n, p, k, Xnorm, alpha, lambdaH);
 
+     // Guard: Check H for non-finite values immediately after update
+     // This prevents NaN/Inf from propagating through W and beta updates
+     if (!H.is_finite()) {
+       flag_nan = true;
+       break;
+     }
+
      l = calc_loss_cpp(X, y, d, W, H, beta, n, p, k, n_event, Xnorm,
                        alpha, lambda, nu, lambdaW, lambdaH, sdZ);
 
@@ -579,6 +609,13 @@ List optimize_loss_cpp(const arma::mat& X_in,
        sdZ, theta_init, rho,
        max_backtracks
      );
+
+     // Guard: Check W for non-finite values after update
+     // This prevents NaN/Inf from propagating to beta update
+     if (!W.is_finite()) {
+       flag_nan = true;
+       break;
+     }
 
      l = calc_loss_cpp(X, y, d, W, H, beta, n, p, k, n_event, Xnorm,
                        alpha, lambda, nu, lambdaW, lambdaH, sdZ);
