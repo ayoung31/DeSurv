@@ -526,6 +526,12 @@ List optimize_loss_cpp(const arma::mat& X_in,
 
    double Xnorm = arma::accu(arma::square(X));
 
+   // Guard against Xnorm == 0 (all-zero input matrix)
+   // This should be caught at R level, but defend in depth
+   if (Xnorm < 1e-300) {
+     Rcpp::stop("X has near-zero squared norm (Xnorm < 1e-300). Cannot proceed with NMF.");
+   }
+
    //l2 normalize W and adjust H to correspond
    arma::rowvec cn = arma::sqrt(arma::sum(arma::square(W), 0));
    cn.transform([&](double c){ return (c < 1e-12 ? 1.0 : c); });
