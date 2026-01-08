@@ -1,6 +1,6 @@
 Package: DeSurv
 Title: Survival-Driven Nonnegative Matrix Factorization
-Version: 0.0.0.9000
+Version: 1.0.1
 Authors@R: 
     person("Amber", "Young", , "ayoung31@ad.unc.edu", role = c("aut","cre"))
 Description: Fit a supervised nonnegative matrix factorization that
