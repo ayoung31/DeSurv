@@ -197,8 +197,22 @@ desurv_bayesopt <- function(
       status <- "error"
       msg <- conditionMessage(result)
     } else {
+      # Extract mean C-index from CV results
+      # If summary has multiple rows (e.g., from multi-value grids in bo_fixed),
+
+      # use the maximum C-index to avoid silently optimizing against the wrong value
       metric <- result$summary$mean_cindex
-      score <- metric[1L]
+      if (length(metric) > 1L) {
+        warning(
+          "BO evaluation returned ", length(metric), " rows in CV summary. ",
+          "Using maximum C-index. Consider passing scalar values (not grids) ",
+          "to bo_fixed for reproducible optimization.",
+          call. = FALSE
+        )
+        score <- max(metric, na.rm = TRUE)
+      } else {
+        score <- metric[1L]
+      }
       status <- "ok"
       msg <- NA_character_
     }
@@ -319,9 +333,14 @@ desurv_bayesopt <- function(
       current_best <- max(response)
       improv <- preds$mean - current_best - exploration_weight
       sd <- preds$sd
-      with_sd <- sd > 0
+      # Use a robust minimum threshold for numerical stability.
+      # Very small sd values (e.g., 1e-16) can cause division issues.
+      sd_min <- sqrt(.Machine$double.eps)  # ~1.5e-8
+      with_sd <- sd > sd_min
       z <- rep(0, length(sd))
       z[with_sd] <- improv[with_sd] / sd[with_sd]
+      # Clamp extreme z values to avoid numerical overflow in pnorm/dnorm
+      z <- pmax(pmin(z, 10), -10)
       ei <- numeric(length(sd))
       ei[with_sd] <- improv[with_sd] * stats::pnorm(z[with_sd]) +
         sd[with_sd] * stats::dnorm(z[with_sd])
@@ -354,6 +373,14 @@ desurv_bayesopt <- function(
   best_params <- as.numeric(best_row[1, param_names, drop = TRUE])
   names(best_params) <- param_names
 
+  # Filter fixed_args to exclude parameters that were tuned via bo_bounds
+  # This ensures $fixed accurately reflects only truly fixed parameters
+  tuned_params <- bound_info$parameter
+  truly_fixed <- fixed_args[!names(fixed_args) %in% tuned_params]
+  if (!"ntop" %in% tuned_params) {
+    truly_fixed$ntop <- ntop
+  }
+
   structure(
     list(
       history = history_df,
@@ -362,7 +389,7 @@ desurv_bayesopt <- function(
         mean_cindex = best_row$mean_cindex
       ),
       bounds = bound_info,
-      fixed = c(fixed_args, list(ntop = ntop)),
+      fixed = truly_fixed,
       seed = rng_seed,
       call = match.call(),
       km_fit = last_km_fit
@@ -380,12 +407,19 @@ desurv_bayesopt <- function(
 #'
 #' @param include_factor_penalties Logical; include search ranges for
 #'   `lambdaW_grid`/`lambdaH_grid`. Defaults to `TRUE`.
+#' @param include_ngene Logical; include `ngene` (number of genes for
+#'   preprocessing) in the search space. Defaults to `TRUE`. Set to `FALSE`
+#'   when `preprocess = FALSE` to avoid wasting BO evaluations exploring a
+#'   dimension that has no effect.
 #'
 #' @return Named list suitable for the `bo_bounds` argument of
 #'   [desurv_bayesopt()].
 #'
 #' @export
-desurv_bo_default_bounds <- function(include_factor_penalties = TRUE) {
+desurv_bo_default_bounds <- function(
+    include_factor_penalties = TRUE,
+    include_ngene = TRUE
+) {
   bounds <- list(
     k_grid = list(lower = 2, upper = 12, type = "integer"),
     alpha_grid = list(lower = 0, upper = 0.95, type = "continuous"),
@@ -393,11 +427,13 @@ desurv_bo_default_bounds <- function(include_factor_penalties = TRUE) {
     nu_grid = list(lower = 0, upper = 1),
     n_starts = list(lower = 10, upper = 100, type = "integer"),
     nfolds = list(lower = 5, upper = 10, type = "integer"),
-    ngene = list(lower = 1000, upper = 5000, type = "integer"),
     tol = list(lower = 1e-6, upper = 1e-4, scale = "log10"),
     maxit = list(lower = 200, upper = 6000, type = "integer"),
     ntop = list(lower = 25, upper = 100, type = "integer")
   )
+  if (isTRUE(include_ngene)) {
+    bounds$ngene <- list(lower = 1000, upper = 5000, type = "integer")
+  }
   if (isTRUE(include_factor_penalties)) {
     bounds$lambdaW_grid <- list(lower = 1e-5, upper = 1e5, scale = "log10")
     bounds$lambdaH_grid <- list(lower = 1e-5, upper = 1e5, scale = "log10")
@@ -674,7 +710,12 @@ print.desurv_bo <- function(x, ...) {
     row_df <- as.data.frame(row_df, stringsAsFactors = FALSE)
     history_rows[[length(history_rows) + 1L]] <- row_df
     unit_store[[eval_id]] <- unit_coords
-    existing_keys <- c(existing_keys, key)
+    # Only block regions for successful evaluations from warm-start history.
+    # Failed evaluations (errors, NA scores) might be transient and should
+    # be allowed to retry in subsequent runs.
+    if (identical(status_vec[i], "ok") && !is.na(mean_vec[i])) {
+      existing_keys <- c(existing_keys, key)
+    }
   }
 
   empty$history_rows <- history_rows

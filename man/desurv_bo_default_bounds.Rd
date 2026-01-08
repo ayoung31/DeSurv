@@ -4,11 +4,16 @@
 \alias{desurv_bo_default_bounds}
 \title{Default Bayesian optimisation bounds for DeSurv}
 \usage{
-desurv_bo_default_bounds(include_factor_penalties = TRUE)
+desurv_bo_default_bounds(include_factor_penalties = TRUE, include_ngene = TRUE)
 }
 \arguments{
 \item{include_factor_penalties}{Logical; include search ranges for
 \code{lambdaW_grid}/\code{lambdaH_grid}. Defaults to \code{TRUE}.}
+
+\item{include_ngene}{Logical; include \code{ngene} (number of genes for
+preprocessing) in the search space. Defaults to \code{TRUE}. Set to \code{FALSE}
+when \code{preprocess = FALSE} to avoid wasting BO evaluations exploring a
+dimension that has no effect.}
 }
 \value{
 Named list suitable for the \code{bo_bounds} argument of

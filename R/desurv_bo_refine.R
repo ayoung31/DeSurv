@@ -36,6 +36,12 @@ desurv_bo_refine_bounds <- function(
   if (!length(bounds)) {
     stop("`bounds` must contain at least one parameter.", call. = FALSE)
   }
+  # Validate top_k is a positive integer
+
+  top_k <- as.integer(top_k)
+  if (length(top_k) != 1L || is.na(top_k) || top_k < 1L) {
+    stop("`top_k` must be a positive integer (>= 1).", call. = FALSE)
+  }
   hist_df <- as.data.frame(history, stringsAsFactors = FALSE)
   if (!nrow(hist_df)) {
     warning("History is empty; returning the original bounds.")

@@ -258,8 +258,20 @@ desurv_cv_bayesopt <- function(
       msg <- conditionMessage(result)
     } else {
       # Extract mean C-index from CV results
+      # If summary has multiple rows (e.g., from multi-value grids in bo_fixed),
+      # use the maximum C-index to avoid silently optimizing against the wrong value
       metric <- result$summary$mean_cindex
-      score <- metric[1L]
+      if (length(metric) > 1L) {
+        warning(
+          "BO evaluation returned ", length(metric), " rows in CV summary. ",
+          "Using maximum C-index. Consider passing scalar values (not grids) ",
+          "to bo_fixed for reproducible optimization.",
+          call. = FALSE
+        )
+        score <- max(metric, na.rm = TRUE)
+      } else {
+        score <- metric[1L]
+      }
       status <- "ok"
       msg <- NA_character_
       diag_df <- result$diagnostics
@@ -409,9 +421,14 @@ desurv_cv_bayesopt <- function(
       current_best <- max(response)
       improv <- preds$mean - current_best - exploration_weight
       sd <- preds$sd
-      with_sd <- sd > 0
+      # Use a robust minimum threshold for numerical stability.
+      # Very small sd values (e.g., 1e-16) can cause division issues.
+      sd_min <- sqrt(.Machine$double.eps)  # ~1.5e-8
+      with_sd <- sd > sd_min
       z <- rep(0, length(sd))
       z[with_sd] <- improv[with_sd] / sd[with_sd]
+      # Clamp extreme z values to avoid numerical overflow in pnorm/dnorm
+      z <- pmax(pmin(z, 10), -10)
       ei <- numeric(length(sd))
       ei[with_sd] <- improv[with_sd] * stats::pnorm(z[with_sd]) +
         sd[with_sd] * stats::dnorm(z[with_sd])
@@ -464,6 +481,11 @@ desurv_cv_bayesopt <- function(
     NULL
   }
 
+  # Filter fixed_params to exclude parameters that were tuned via bo_bounds
+  # This ensures $fixed accurately reflects only truly fixed parameters
+  tuned_params <- bound_info$parameter
+  truly_fixed <- fixed_params[!names(fixed_params) %in% tuned_params]
+
   structure(
     list(
       history = history_df,
@@ -472,7 +494,7 @@ desurv_cv_bayesopt <- function(
         mean_cindex = best_row$mean_cindex
       ),
       bounds = bound_info,
-      fixed = fixed_params,
+      fixed = truly_fixed,
       seed = rng_seed,
       call = match.call(),
       km_fit = last_km_fit,
