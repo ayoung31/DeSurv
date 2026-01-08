@@ -47,8 +47,9 @@ is a \code{"desurv_data"} object.}
 \code{X} is a matrix or data frame; ignored if \code{X} is a
 \code{"desurv_data"} object (where \code{k} is already stored).}
 
-\item{alpha}{Numeric scalar in \eqn{[0, 1]} controlling the supervision
-strength (weight of the survival component in the objective).}
+\item{alpha}{Numeric scalar in \eqn{[0, 1)} controlling the supervision
+strength (weight of the survival component in the objective). Values >= 1
+are clipped to just below 1 with a warning.}
 
 \item{lambda}{Numeric non-negative scalar; global penalty parameter.}
 
@@ -112,6 +113,10 @@ printed during initialization and optimization.}
 \item{preprocess_info}{Optional list containing preprocessing metadata
 (gene order, transformation method, normalization targets) that should
 be stored on the fitted object for use during prediction.}
+
+\item{max_iter_beta}{Integer; maximum number of iterations for the
+coordinate descent optimizer used to update the Cox coefficients
+\code{beta} during each optimization cycle. Default is 500.}
 }
 \value{
 An object of class \code{"desurv_fit"} with components including:
@@ -153,8 +158,9 @@ and fits a Cox model with linear predictor
 \deqn{\eta = (X^\top W)\,\beta,}
 where \eqn{\beta \in R^k}. The parameters are:
 \itemize{
-\item \code{alpha}: supervision parameter in \eqn{[0, 1]} controlling the
+\item \code{alpha}: supervision parameter in \eqn{[0, 1)} controlling the
 strength of the survival-driven component of the objective.
+Values >= 1 are clipped to just below 1 with a warning.
 \item \code{nu}: elastic-net mixing parameter in \eqn{[0, 1]} for the
 penalty on \eqn{\beta}, interpolating between ridge-like and
 lasso-like behaviour.

@@ -23,7 +23,7 @@ desurv_cv_bayesopt(
   n_init = NULL,
   n_iter = 20,
   candidate_pool = NULL,
-  exploration_weight = 0,
+  exploration_weight = 0.01,
   seed = NULL,
   cv_verbose = FALSE,
   verbose = TRUE,
@@ -72,7 +72,7 @@ Defaults to \code{max(5, 3 * length(bo_bounds))}.}
 step. Defaults to \code{max(1000, 200 * length(bo_bounds))}.}
 
 \item{exploration_weight}{Non-negative scalar \code{xi} used in the expected
-improvement formula to encourage exploration.}
+improvement formula to encourage exploration. Default is 0.01.}
 
 \item{seed}{Optional base seed for reproducibility.}
 

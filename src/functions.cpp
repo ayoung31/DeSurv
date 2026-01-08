@@ -518,6 +518,7 @@ List optimize_loss_cpp(const arma::mat& X_in,
 
    // Sort by increasing time once (apply same permutation to everything)
    arma::uvec tOrder = arma::sort_index(y);
+   arma::uvec tOrderInv = arma::sort_index(tOrder);  // Inverse permutation to restore original order
    y = y.elem(tOrder);
    d = d.elem(tOrder);
    X = X.cols(tOrder);
@@ -645,6 +646,9 @@ List optimize_loss_cpp(const arma::mat& X_in,
 
    List loss_final = calc_loss_cpp(X, y, d, W, H, beta, n, p, k, n_event, Xnorm,
                              alpha, lambda, nu, lambdaW, lambdaH, sdZ);
+
+   // Restore H to original sample order (undo time sorting)
+   H = H.cols(tOrderInv);
 
    return List::create(
      Named("W")           = W,

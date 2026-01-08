@@ -71,3 +71,89 @@ test_that("desurv_data stores dataset labels", {
   )
   expect_equal(dd$dataset, as.character(dataset))
 })
+
+# Tests for Issue #1: Missing Nonnegativity Validation for X
+test_that("desurv_data rejects negative X values (NMF requirement)", {
+  fixture <- make_fixture_dataset()
+
+  # Create X with some negative values
+  X_negative <- fixture$X
+  X_negative[1, 1] <- -1
+
+  expect_error(
+    desurv_data(X_negative, fixture$y, fixture$d, fixture$k),
+    "non-negative",
+    fixed = FALSE
+  )
+
+  # All negative should also fail
+  X_all_negative <- -abs(fixture$X)
+  expect_error(
+    desurv_data(X_all_negative, fixture$y, fixture$d, fixture$k),
+    "non-negative",
+    fixed = FALSE
+  )
+})
+
+# Tests for Issue #5: All-Zero X Yields Division by Zero
+test_that("desurv_data rejects all-zero X (Xnorm=0)",
+{
+  fixture <- make_fixture_dataset()
+
+  # All zeros
+  X_zeros <- matrix(0, nrow = fixture$p, ncol = fixture$n)
+  expect_error(
+    desurv_data(X_zeros, fixture$y, fixture$d, fixture$k),
+    "cannot be all zeros",
+    fixed = FALSE
+  )
+})
+
+# Test that X with at least one non-zero value is accepted
+test_that("desurv_data accepts X with at least one non-zero value", {
+  fixture <- make_fixture_dataset()
+
+  # Nearly all zeros but one non-zero value
+  X_sparse <- matrix(0, nrow = fixture$p, ncol = fixture$n)
+  X_sparse[1, 1] <- 1
+
+  dd <- desurv_data(X_sparse, fixture$y, fixture$d, fixture$k)
+  expect_s3_class(dd, "desurv_data")
+})
+
+# Tests for Issue #6: Alpha Clipping Contradicts Documentation
+test_that("alpha=1 is clipped with warning", {
+  # Note: alpha is validated in .validate_desurv_hyperparams, not desurv_data
+  # Test the hyperparameter validation directly
+  expect_warning(
+    result <- .validate_desurv_hyperparams(
+      alpha = 1,
+      lambda = 0.1,
+      nu = 0.5,
+      lambdaW = 0,
+      lambdaH = 0,
+      tol = 1e-6,
+      maxit = 100,
+      verbose = FALSE
+    ),
+    "alpha outside"
+  )
+  expect_true(result$alpha < 1)
+  expect_true(result$alpha > 0.99)  # Should be very close to 1
+
+  # alpha > 1 should also be clipped
+  expect_warning(
+    result2 <- .validate_desurv_hyperparams(
+      alpha = 1.5,
+      lambda = 0.1,
+      nu = 0.5,
+      lambdaW = 0,
+      lambdaH = 0,
+      tol = 1e-6,
+      maxit = 100,
+      verbose = FALSE
+    ),
+    "alpha outside"
+  )
+  expect_true(result2$alpha < 1)
+})

@@ -2,7 +2,21 @@
 .validate_desurv_data <- function(X, y, d, k, dataset = NULL) {
   X <- as.matrix(X)
   if (!is.numeric(X)) stop("X must be a numeric matrix.")
+
+  # Check for finite values (no NA/NaN/Inf)
   if (anyNA(X) || !all(is.finite(X))) stop("X cannot contain NA/NaN/Inf.")
+
+  # NMF requires non-negative input matrix
+
+  if (any(X < 0)) {
+    stop("X must be non-negative (all values >= 0). NMF requires non-negative input.")
+  }
+
+  # Ensure X has non-zero energy (Xnorm = sum(X^2) > 0 to avoid division by zero)
+  Xnorm <- sum(X^2)
+  if (Xnorm == 0) {
+    stop("X cannot be all zeros (sum(X^2) must be > 0).")
+  }
 
   p <- nrow(X); n <- ncol(X)
   if (p <= 1L || n <= 1L) stop("X must have at least 2 rows and 2 columns.")

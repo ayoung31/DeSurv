@@ -39,7 +39,7 @@
 #' @param candidate_pool Number of random candidates assessed per acquisition
 #'   step. Defaults to `max(1000, 200 * length(bo_bounds))`.
 #' @param exploration_weight Non-negative scalar `xi` used in the expected
-#'   improvement formula to encourage exploration.
+#'   improvement formula to encourage exploration. Default is 0.01.
 #' @param seed Optional base seed for reproducibility.
 #' @param cv_verbose Logical; if `TRUE`, propagate `verbose = TRUE` into
 #'   `desurv_cv()` calls. The optimiser itself still reports progress via
@@ -148,7 +148,7 @@ desurv_cv_bayesopt <- function(
     n_init = NULL,
     n_iter = 20,
     candidate_pool = NULL,
-    exploration_weight = 0,
+    exploration_weight = 0.01,
     seed = NULL,
     cv_verbose = FALSE,
     verbose = TRUE,

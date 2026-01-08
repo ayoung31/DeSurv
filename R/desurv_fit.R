@@ -14,8 +14,9 @@
 #' \deqn{\eta = (X^\top W)\,\beta,}
 #' where \eqn{\beta \in R^k}. The parameters are:
 #' \itemize{
-#'   \item \code{alpha}: supervision parameter in \eqn{[0, 1]} controlling the
+#'   \item \code{alpha}: supervision parameter in \eqn{[0, 1)} controlling the
 #'         strength of the survival-driven component of the objective.
+#'         Values >= 1 are clipped to just below 1 with a warning.
 #'   \item \code{nu}: elastic-net mixing parameter in \eqn{[0, 1]} for the
 #'         penalty on \eqn{\beta}, interpolating between ridge-like and
 #'         lasso-like behaviour.
@@ -59,8 +60,9 @@
 #' @param k Positive integer rank (number of latent factors). Used only if
 #'   \code{X} is a matrix or data frame; ignored if \code{X} is a
 #'   \code{"desurv_data"} object (where \code{k} is already stored).
-#' @param alpha Numeric scalar in \eqn{[0, 1]} controlling the supervision
-#'   strength (weight of the survival component in the objective).
+#' @param alpha Numeric scalar in \eqn{[0, 1)} controlling the supervision
+#'   strength (weight of the survival component in the objective). Values >= 1
+#'   are clipped to just below 1 with a warning.
 #' @param lambda Numeric non-negative scalar; global penalty parameter.
 #' @param nu Numeric scalar in \eqn{[0, 1]} giving the elastic-net mixing
 #'   parameter for \eqn{\beta}.
@@ -107,6 +109,9 @@
 #' @param preprocess_info Optional list containing preprocessing metadata
 #'   (gene order, transformation method, normalization targets) that should
 #'   be stored on the fitted object for use during prediction.
+#' @param max_iter_beta Integer; maximum number of iterations for the
+#'   coordinate descent optimizer used to update the Cox coefficients
+#'   \code{beta} during each optimization cycle. Default is 500.
 #'
 #' @return
 #' An object of class \code{"desurv_fit"} with components including:
@@ -301,6 +306,13 @@ desurv_fit <- function(
   )
 
   fit_full$W <- attach_gene_names(fit_full$W)
+
+  # Preserve sample (column) names on H to match input X
+  sample_names <- colnames(data$X)
+  if (!is.null(sample_names) && ncol(fit_full$H) == length(sample_names)) {
+    colnames(fit_full$H) <- sample_names
+  }
+
   nan_flag <- isTRUE(fit_full$nan_flag)
 
   Z_full  <- t(data$X) %*% fit_full$W

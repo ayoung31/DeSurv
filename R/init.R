@@ -24,10 +24,13 @@ init <- function(
   }
 
   # helper to run ONE short initialization
+  # Returns a list with either success (cindex, W, H, beta) or failure info (error_msg)
   run_one_init <- function(i, verbose_inner = FALSE) {
     if (verbose_inner) {
       message(sprintf("  Short initialization %d / %d", i, ninit))
     }
+
+    error_msg <- NULL
 
     max_x <- max(X)
     W0_i    <- matrix(runif(p * k, 0, max_x), nrow = p, ncol = k)
@@ -43,6 +46,7 @@ init <- function(
         tol_init, imaxit, verbose_inner
       ),
       error = function(e) {
+        error_msg <<- sprintf("optimize_loss_cpp() failed: %s", e$message)
         if (verbose_inner) {
           warning(sprintf("  Initialization %d failed in optimize_loss_cpp(): %s",
                           i, e$message))
@@ -51,14 +55,19 @@ init <- function(
       }
     )
 
-    if (is.null(fit_short) || isTRUE(fit_short$nan_flag)) {
-      return(NULL)
+    if (is.null(fit_short)) {
+      return(list(error_msg = error_msg %||% "optimize_loss_cpp() returned NULL"))
+    }
+
+    if (isTRUE(fit_short$nan_flag)) {
+      return(list(error_msg = "NaN values produced during optimization"))
     }
 
     lp_short <- tryCatch({
       Z_short <- t(X) %*% fit_short$W
       drop(Z_short %*% fit_short$beta)
     }, error = function(e) {
+      error_msg <<- sprintf("linear predictor computation failed: %s", e$message)
       if (verbose_inner) {
         warning(sprintf("  Initialization %d failed computing lp: %s",
                         i, e$message))
@@ -67,12 +76,13 @@ init <- function(
     })
 
     if (anyNA(lp_short) || !all(is.finite(lp_short))) {
-      return(NULL)
+      return(list(error_msg = error_msg %||% "non-finite linear predictor values"))
     }
 
     cval_short <- tryCatch(
       cvwrapr::getCindex(lp_short, survival::Surv(y, delta)),
       error = function(e) {
+        error_msg <<- sprintf("getCindex() failed: %s", e$message)
         if (verbose_inner) {
           warning(sprintf("  Initialization %d failed in getCindex(): %s",
                           i, e$message))
@@ -82,7 +92,7 @@ init <- function(
     )
 
     if (is.na(cval_short)) {
-      return(NULL)
+      return(list(error_msg = error_msg %||% "C-index is NA"))
     }
 
     list(
@@ -132,14 +142,36 @@ init <- function(
     }
   }
 
-  # pick best non-NULL result
-  cvals <- sapply(results, function(res) if (is.null(res)) NA_real_ else res$cindex)
+  # pick best result (those with cindex field are successes)
+  cvals <- sapply(results, function(res) {
+    if (is.null(res) || is.null(res$cindex)) NA_real_ else res$cindex
+  })
+
   if (all(is.na(cvals))) {
-    stop("All short initializations failed or produced invalid fits.")
+    # Collect unique error messages from failed initializations
+    error_msgs <- unique(sapply(results, function(res) {
+      if (!is.null(res) && !is.null(res$error_msg)) res$error_msg else "unknown failure"
+    }))
+    error_msgs <- error_msgs[!is.na(error_msgs)]
+
+    # Create informative error message
+    error_summary <- paste(
+      "All short initializations failed or produced invalid fits.",
+      sprintf("Failure reasons (%d unique):", length(error_msgs)),
+      paste("  -", error_msgs, collapse = "\n"),
+      sep = "\n"
+    )
+    stop(error_summary, call. = FALSE)
   }
 
   best_idx <- which.max(cvals)
   best_res <- results[[best_idx]]
+
+  # Report any failures in verbose mode
+  n_failed <- sum(is.na(cvals))
+  if (verbose && n_failed > 0) {
+    message(sprintf("  %d of %d initializations failed.", n_failed, ninit))
+  }
 
   if (verbose) {
     message(sprintf("Best short initialization C-index: %.4f (init %d).",

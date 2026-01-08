@@ -444,13 +444,17 @@
     stats::sd(x) / sqrt(length(x))
   }
 
+  ## Filter non-finite values first (consistent with SE calculation)
+  mean_fun <- function(x) {
+    x <- x[is.finite(x)]
+    if (length(x) == 0L) return(NA_real_)
+    mean(x)
+  }
+
   summary_mean <- stats::aggregate(
     mean_cindex_fold ~ k + lambda + nu + lambdaW + lambdaH + alpha,
     data = summary_fold,
-    FUN  = function(x) {
-      if (anyNA(x) || any(!is.finite(x))) return(NA_real_)
-      mean(x)
-    },
+    FUN  = mean_fun,
     na.action = stats::na.pass
   )
   names(summary_mean)[names(summary_mean) == "mean_cindex_fold"] <- "mean_cindex"

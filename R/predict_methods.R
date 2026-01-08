@@ -46,12 +46,26 @@ coef.desurv_fit <- function(object, ...) {
   }
 
   if (inherits(newdata, "desurv_data")) {
+    # Warn if model has preprocessing metadata but desurv_data bypasses it
+    if (!is.null(preprocess_meta) && !is.null(preprocess_meta$method_trans_train)) {
+      warning(
+        "Passing a desurv_data object bypasses preprocessing transforms. ",
+        "If newdata was not preprocessed the same way as training data, ",
+        "predictions may be incorrect.",
+        call. = FALSE
+      )
+    }
     return(newdata$X)
   }
 
   X <- as.matrix(newdata)
   if (!is.numeric(X)) {
     stop("`newdata` must be coercible to a numeric matrix.")
+  }
+
+  # Validate that newdata contains finite values
+  if (anyNA(X) || !all(is.finite(X))) {
+    stop("`newdata` cannot contain NA, NaN, or Inf values.", call. = FALSE)
   }
 
   train_genes <- if (!is.null(preprocess_meta$genes)) {
